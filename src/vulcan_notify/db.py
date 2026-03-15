@@ -125,19 +125,28 @@ class Database:
         return self._db
 
     async def _migrate(self) -> None:
-        """Drop legacy tables from the old hash-based schema."""
+        """Handle schema migrations."""
+        # Drop legacy hash-based tables
+        for table in ("seen_items", "poll_state"):
+            cursor = await self.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            )
+            if await cursor.fetchone():
+                logger.info("Migrating: dropping legacy %s table", table)
+                await self.db.execute(f"DROP TABLE {table}")
+
+        # Migrate old messages table (missing api_global_key column)
         cursor = await self.db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='seen_items'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'"
         )
         if await cursor.fetchone():
-            logger.info("Migrating: dropping legacy seen_items table")
-            await self.db.execute("DROP TABLE seen_items")
-        cursor = await self.db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='poll_state'"
-        )
-        if await cursor.fetchone():
-            logger.info("Migrating: dropping legacy poll_state table")
-            await self.db.execute("DROP TABLE poll_state")
+            col_cursor = await self.db.execute("PRAGMA table_info(messages)")
+            columns = {row[1] for row in await col_cursor.fetchall()}
+            if "api_global_key" not in columns:
+                logger.info("Migrating: recreating messages table with new schema")
+                await self.db.execute("DROP TABLE messages")
+
         await self.db.commit()
 
     # ── Students ─────────────────────────────────────────────────────

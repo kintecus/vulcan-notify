@@ -58,10 +58,19 @@ class VulcanClient:
             await self._http.close()
 
     async def _request_url(self, url: str) -> Any:
-        """Make a GET request to an absolute URL. Returns parsed JSON."""
-        session = await self._ensure_session()
+        """Make a GET request to an absolute URL. Returns parsed JSON.
 
-        async with session.get(url, ssl=self._ssl_ctx) as resp:
+        Builds a per-request Cookie header matching the URL's domain,
+        since different subdomains need different cookies.
+        """
+        session = await self._ensure_session()
+        cookie_header = "; ".join(
+            f"{k}={v}" for k, v in cookies_for_url(self._session_data, url).items()
+        )
+
+        async with session.get(
+            url, ssl=self._ssl_ctx, headers={"Cookie": cookie_header}
+        ) as resp:
             content_type = resp.headers.get("content-type", "")
 
             if "text/html" in content_type:
