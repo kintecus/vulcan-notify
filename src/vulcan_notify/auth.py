@@ -51,7 +51,7 @@ async def login_and_save_session(session_path: Path) -> dict:
         await browser.close()
 
     # Extract tenant from dashboard URL
-    # e.g. https://uczen.eduvulcan.pl/gminazielonki/App/.../tablica
+    # e.g. https://uczen.eduvulcan.pl/{tenant}/App/.../tablica
     parts = dashboard_url.split("uczen.eduvulcan.pl/")
     tenant = parts[1].split("/")[0] if len(parts) > 1 else ""
 
