@@ -126,7 +126,7 @@ class VulcanClient:
         grades: list[Grade] = []
         for subject in data["ocenyPrzedmioty"]:
             subject_name = subject.get("przedmiotNazwa", "")
-            for column in subject.get("kolumnyOcenyCzastkowe", []):
+            for column in subject.get("kolumnyOcenyCzastkowe") or []:
                 for grade in column.get("oceny", []):
                     grades.append(
                         Grade(
