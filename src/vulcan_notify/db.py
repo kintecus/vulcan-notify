@@ -322,6 +322,24 @@ class Database:
         )
         await self.db.commit()
 
+    async def get_recent_messages(self, days: int = 7) -> list[dict[str, object]]:
+        cursor = await self.db.execute(
+            "SELECT sender, subject, date, mailbox, content "
+            "FROM messages WHERE date >= date('now', ?) ORDER BY date DESC",
+            (f"-{days} days",),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "sender": r[0],
+                "subject": r[1],
+                "date": r[2],
+                "mailbox": r[3],
+                "content": r[4],
+            }
+            for r in rows
+        ]
+
     async def get_message_ids(self) -> set[int]:
         cursor = await self.db.execute("SELECT id FROM messages")
         return {row[0] for row in await cursor.fetchall()}

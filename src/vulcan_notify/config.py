@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # Message filtering (comma-separated sender names, empty = show all)
     message_sender_whitelist: list[str] = []
 
+    # LLM (optional - all providers use OpenAI-compatible API)
+    llm_base_url: str = "https://api.cerebras.ai/v1"
+    llm_api_key: str | None = None
+    llm_model: str = "llama3.1-8b"
+    prompts_file: Path = Path("prompts.toml")
+
     # Logging
     log_level: str = "INFO"
 

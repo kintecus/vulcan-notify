@@ -9,8 +9,8 @@ CLI tool that syncs data from the eduVulcan school e-journal (grades, attendance
 ## Commands
 
 ```bash
-# Install dependencies
-uv sync
+# Install dependencies (including dev tools: pytest, ruff, mypy, pre-commit)
+uv sync --all-extras
 
 # Authenticate (opens browser)
 uv run vulcan-notify auth

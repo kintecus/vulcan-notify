@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from typing import Any
 
 import aiohttp
@@ -21,6 +22,29 @@ from vulcan_notify.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Mimic a real Chrome browser to avoid bot detection
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+# Random delay range between requests (seconds)
+_MIN_DELAY = 0.3
+_MAX_DELAY = 1.5
 
 
 class SessionExpiredError(Exception):
@@ -48,10 +72,16 @@ class VulcanClient:
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._http is None or self._http.closed:
-            self._http = aiohttp.ClientSession(
-                headers={"Cookie": self._cookie_header()},
-            )
+            headers = {**_BROWSER_HEADERS, "Cookie": self._cookie_header()}
+            headers["Referer"] = f"{self._base_url}/App"
+            headers["Origin"] = self._base_url
+            self._http = aiohttp.ClientSession(headers=headers)
         return self._http
+
+    @staticmethod
+    async def _jitter() -> None:
+        """Random delay between requests to mimic human browsing."""
+        await asyncio.sleep(random.uniform(_MIN_DELAY, _MAX_DELAY))
 
     async def close(self) -> None:
         if self._http and not self._http.closed:
@@ -63,13 +93,14 @@ class VulcanClient:
         Builds a per-request Cookie header matching the URL's domain,
         since different subdomains need different cookies.
         """
+        await self._jitter()
         session = await self._ensure_session()
         cookie_header = "; ".join(
             f"{k}={v}" for k, v in cookies_for_url(self._session_data, url).items()
         )
 
         async with session.get(
-            url, ssl=self._ssl_ctx, headers={"Cookie": cookie_header}
+            url, ssl=self._ssl_ctx, headers={"Cookie": cookie_header, "Referer": url}
         ) as resp:
             content_type = resp.headers.get("content-type", "")
 
@@ -90,6 +121,7 @@ class VulcanClient:
 
         Raises SessionExpiredError if the response is HTML (login redirect).
         """
+        await self._jitter()
         session = await self._ensure_session()
         url = f"{self._base_url}{path}"
 
