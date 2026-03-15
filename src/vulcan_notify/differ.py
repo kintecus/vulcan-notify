@@ -102,24 +102,24 @@ async def diff_attendance(
 
     for entry in fetched:
         if (entry.date, entry.lesson_number) not in stored_keys and entry.category != 1:
-                category_name = {2: "Absent", 3: "Late", 4: "Excused"}.get(
-                    entry.category, f"Category {entry.category}"
+            category_name = {2: "Absent", 3: "Late", 4: "Excused"}.get(
+                entry.category, f"Category {entry.category}"
+            )
+            changes.append(
+                Change(
+                    change_type="new",
+                    item_type="attendance",
+                    student_name=student.name,
+                    title=f"Attendance: {category_name}",
+                    body=(
+                        f"Date: {entry.date}\n"
+                        f"Lesson {entry.lesson_number}: {entry.subject}\n"
+                        f"Teacher: {entry.teacher}"
+                    ),
+                    priority=3,
+                    tags=["calendar", "school"],
                 )
-                changes.append(
-                    Change(
-                        change_type="new",
-                        item_type="attendance",
-                        student_name=student.name,
-                        title=f"Attendance: {category_name}",
-                        body=(
-                            f"Date: {entry.date}\n"
-                            f"Lesson {entry.lesson_number}: {entry.subject}\n"
-                            f"Teacher: {entry.teacher}"
-                        ),
-                        priority=3,
-                        tags=["calendar", "school"],
-                    )
-                )
+            )
 
     return changes
 
