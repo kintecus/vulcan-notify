@@ -1,0 +1,21 @@
+{
+  "versionFiles": [
+    { "path": "pyproject.toml", "field": "project.version", "format": "toml" }
+  ],
+  "triggerStrategy": "auto",
+  "baseBranch": "main",
+  "enforcement": {
+    "missingBump": "ask"
+  },
+  "commitFormat": "chore: bump version to {version}",
+  "excludePatterns": [
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    ".gitignore",
+    "*.md",
+    "docs/**",
+    ".claude/**",
+    ".claude-plugin/**"
+  ]
+}
