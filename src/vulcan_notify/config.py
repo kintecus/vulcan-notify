@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Storage
     db_path: Path = Path("vulcan_notify.db")
 
+    # Message filtering (comma-separated sender names, empty = show all)
+    message_sender_whitelist: list[str] = []
+
     # Logging
     log_level: str = "INFO"
 

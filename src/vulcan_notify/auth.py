@@ -1,9 +1,13 @@
 """Playwright-based auth for eduVulcan - saves session cookies after browser login."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
-from pathlib import Path
+import ssl  # noqa: TC003
+from pathlib import Path  # noqa: TC003
+from typing import Any
 
 import aiohttp
 from playwright.async_api import async_playwright
@@ -13,7 +17,7 @@ logger = logging.getLogger(__name__)
 EDUVULCAN_LOGIN_URL = "https://eduvulcan.pl"
 
 
-async def login_and_save_session(session_path: Path) -> dict:
+async def login_and_save_session(session_path: Path) -> dict[str, Any]:
     """Open browser for manual login, save session cookies after redirect to dashboard.
 
     Returns the session data dict (contains cookies and base_url).
@@ -40,9 +44,9 @@ async def login_and_save_session(session_path: Path) -> dict:
 
         try:
             await asyncio.wait_for(login_complete.wait(), timeout=300)
-        except TimeoutError:
+        except TimeoutError as exc:
             await browser.close()
-            raise TimeoutError("Login timed out after 5 minutes")
+            raise TimeoutError("Login timed out after 5 minutes") from exc
 
         # Let the dashboard finish loading
         await asyncio.sleep(2)
@@ -70,14 +74,17 @@ async def login_and_save_session(session_path: Path) -> dict:
     return session_data
 
 
-def load_session(session_path: Path) -> dict:
+def load_session(session_path: Path) -> dict[str, Any]:
     """Load a previously saved session."""
     if not session_path.exists():
-        raise FileNotFoundError(f"No session file at {session_path}. Run 'vulcan-notify auth' first.")
-    return json.loads(session_path.read_text())
+        raise FileNotFoundError(
+            f"No session file at {session_path}. Run 'vulcan-notify auth' first."
+        )
+    data: dict[str, Any] = json.loads(session_path.read_text())
+    return data
 
 
-def cookies_for_url(session_data: dict, url: str) -> dict[str, str]:
+def cookies_for_url(session_data: dict[str, Any], url: str) -> dict[str, str]:
     """Build a Cookie header dict for a given URL from saved session cookies."""
     from urllib.parse import urlparse
 
@@ -94,7 +101,7 @@ def cookies_for_url(session_data: dict, url: str) -> dict[str, str]:
     return matching
 
 
-def _make_ssl_context():  # type: ignore[no-untyped-def]
+def _make_ssl_context() -> ssl.SSLContext:
     """Create an SSL context using certifi's CA bundle."""
     import ssl
 
@@ -103,36 +110,44 @@ def _make_ssl_context():  # type: ignore[no-untyped-def]
     return ssl.create_default_context(cafile=certifi.where())
 
 
-async def test_session(session_data: dict) -> bool:
+async def test_session(session_data: dict[str, Any]) -> bool:
     """Test if the session is still valid by hitting the Context API."""
     base_url = session_data["base_url"]
     ssl_ctx = _make_ssl_context()
     url = f"{base_url}/api/Context"
     cookie_header = "; ".join(f"{k}={v}" for k, v in cookies_for_url(session_data, url).items())
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, ssl=ssl_ctx, headers={"Cookie": cookie_header}) as resp:
-            text = await resp.text()
-            content_type = resp.headers.get("content-type", "")
+    async with (
+        aiohttp.ClientSession() as session,
+        session.get(url, ssl=ssl_ctx, headers={"Cookie": cookie_header}) as resp,
+    ):
+        text = await resp.text()
+        content_type = resp.headers.get("content-type", "")
 
-            print(f"[auth] Response: status={resp.status} content-type={content_type} len={len(text)}")
+        print(
+            f"[auth] Response: status={resp.status}"
+            f" content-type={content_type} len={len(text)}"
+        )
 
-            if resp.status != 200:
-                print(f"[auth] Session invalid: status {resp.status}")
-                print(f"[auth] Body: {text[:300]}")
-                return False
+        if resp.status != 200:
+            print(f"[auth] Session invalid: status {resp.status}")
+            print(f"[auth] Body: {text[:300]}")
+            return False
 
-            # If we got HTML back, the session is expired (redirect to login)
-            if "text/html" in content_type:
-                print("[auth] Got HTML instead of JSON - session expired or cookies not sent correctly")
-                print(f"[auth] Body preview: {text[:300]}")
-                return False
+        # If we got HTML back, the session is expired (redirect to login)
+        if "text/html" in content_type:
+            print(
+                "[auth] Got HTML instead of JSON"
+                " - session expired or cookies not sent correctly"
+            )
+            print(f"[auth] Body preview: {text[:300]}")
+            return False
 
-            try:
-                data = json.loads(text)
-                print(f"[auth] Session valid! Got JSON response.")
-                print(f"[auth] Data: {json.dumps(data, indent=2, ensure_ascii=False)[:500]}")
-                return True
-            except json.JSONDecodeError:
-                print(f"[auth] Unexpected response: {text[:300]}")
-                return False
+        try:
+            data = json.loads(text)
+            print("[auth] Session valid! Got JSON response.")
+            print(f"[auth] Data: {json.dumps(data, indent=2, ensure_ascii=False)[:500]}")
+            return True
+        except json.JSONDecodeError:
+            print(f"[auth] Unexpected response: {text[:300]}")
+            return False
