@@ -8,7 +8,7 @@ from vulcan_notify.auth import load_session, login_and_save_session, test_sessio
 from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
-from vulcan_notify.display import format_sync_results
+from vulcan_notify.display import format_full_sync
 from vulcan_notify.sync import sync_all
 
 
@@ -43,13 +43,13 @@ async def cmd_sync() -> None:
     await db.connect()
 
     try:
-        results = await sync_all(client, db)
+        result = await sync_all(client, db)
 
-        if not results:
+        if not result.student_results:
             print("No students found.")
             sys.exit(1)
 
-        output = format_sync_results(results)
+        output = format_full_sync(result, settings.message_sender_whitelist)
         print(output)
 
     except SessionExpiredError:

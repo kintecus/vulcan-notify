@@ -339,6 +339,82 @@ end note
 
 ![eduVulcan Web API Entity Relationships](https://www.plantuml.com/plantuml/svg/fLPBQzj04BxlhrZKMq92JL983QK9iLr2GbpYqa1A3wFTYRsMj2kqArofvBztzFJALauzIPxvvltDoDVMGURo96PEkHWvolnd7WlG_1b3VlFzZf_nkIPTmPym1gUCjXkLMcOZfLF88E4Y1cjldCjKc3ky4qQlL8dyuo5aORIhDPCBJvM2Y62DU-KbsoX9YIGfnKpGROoqZBKm7gpGMaeYu1_cLulBnOp_PRpnps_91_vnjOJpN9HQcPt2AL-vNA9sltwJuetr-5RSuYCifjnI5NhTsQCUI8oKfO9u8DkYrCQw20PI9MUbGgrLDELAkrgsZaq8yJqMgoWh2psmU6DlNedVCf1ecme_pJzx5IwZ36rnJ-_5guf055kDRVfAxaFfFC6inkPxeGG7ImBH4vrAi1VEp43eDMWfK1UjVrEzVyzAb8aoZbgroiCjYkEcDkBMAkqC7g7S3NkaWJfS28KnTlBQLnCAwlJDRjYbFahTebiJvudkwx-lVnRxYYCgQcqo1Rrc49uIEbOSncYzxr9b1-PrDwkM3AGxM8CtXhx20QXCY1f4OPh6ahRFQKLPFfWr5QiLcOV6n4USeFr2BK4B95ui5ekh-SJZnIB3Q8TQRA6RLaDLocvlI6kS5OVZEb2tvZM17Z0IMpNIpZwQ6hBhW5k6UlO2H8Ptnluk_sTWDw61J5QbNj0I-4k-IZFOLSNfuWU4iH8miW0ZsVHC76IJ6Ld2jZFq-l82ifh6p2HcX_yTo7Fyh42IKolKeq8ZgHSE-YMcA6K8-tJ8hZjgmIJW9sTdz3m_FmdwspNTtpdMoIfeXIJOwC6OLhUEdtfNYetYEZ_qQ2u19IPhv01Oi4RRPrYbrrw1wU7TO9t6H_lRJCarIraxlIs1ZYkDWFcO8zikpbWBlDte2g_czGHwZSnJ-auFjsBQBzHOX15Arf76iAEyQj1C6uUq_SwPX9lNRiH4X20WVH1mPRdR84ynExEjQsSYr0J9BKgY3OSuvby9_QN-TjUVM7jE-Zc8JVMpiW4XJ4xF3LW-EUMjAu9HpRnAWbtJ6_qd-0S0)
 
+## Messages (separate subdomain)
+
+Messages live on `wiadomosci.eduvulcan.pl/{tenant}/api/`, not on the main `uczen.eduvulcan.pl` domain. The inbox is unified across all students - the `skrzynka` field on each message indicates which child's mailbox it belongs to.
+
+### GET /api/Skrzynki
+
+Returns mailboxes for all students. The `globalKey` matches `globalKeySkrzynka` from the Context endpoint.
+
+```json
+[
+  {"globalKey": "aaaaaaaa-...", "nazwa": "Parent Name - R - Child Name - (School)", "typUzytkownika": 2},
+  {"globalKey": "bbbbbbbb-...", "nazwa": "Parent Name - R - Other Child - (School)", "typUzytkownika": 2}
+]
+```
+
+### GET /api/LiczbyNieodczytanych
+
+Unread count per mailbox.
+
+```json
+[
+  {"globalKey": "aaaaaaaa-...", "liczbaWiadomosci": 150},
+  {"globalKey": "bbbbbbbb-...", "liczbaWiadomosci": 64}
+]
+```
+
+### GET /api/Odebrane?idLastWiadomosc={lastId}&pageSize={n}
+
+Received messages, paginated. Use `idLastWiadomosc=0` for the first page.
+
+```json
+[
+  {
+    "id": 379162,
+    "apiGlobalKey": "646d3311-...",
+    "korespondenci": "Kieca Anna - P - (School)",
+    "temat": "Message subject",
+    "data": "2026-03-15T11:02:41.183+01:00",
+    "skrzynka": "Parent Name - R - Child Name - (School)",
+    "hasZalaczniki": false,
+    "przeczytana": false,
+    "wazna": false,
+    "uzytkownikRola": 2,
+    "wycofana": false,
+    "odpowiedziana": false,
+    "przekazana": false
+  }
+]
+```
+
+### GET /api/WiadomoscSzczegoly?apiGlobalKey={uuid}
+
+Full message detail including HTML content.
+
+```json
+{
+  "id": 379162,
+  "apiGlobalKey": "646d3311-...",
+  "nadawca": "Kieca Anna - P - (School)",
+  "odbiorcy": ["Parent Name - R - Child Name - (School)"],
+  "temat": "Message subject",
+  "tresc": "<p>HTML message content</p>",
+  "data": "2026-03-15T11:02:35+01:00",
+  "odczytana": false,
+  "zalaczniki": []
+}
+```
+
+### GET /api/Cache
+
+Shared configuration for the messages app.
+
+### GET /api/Stopka
+
+Email signatures per mailbox.
+
 ## Polling strategy
 
 For change detection, prefer the `*Tablica` (dashboard) endpoints - they're lightweight and designed for the dashboard to poll. The full endpoints (e.g. `/api/Oceny`, `/api/Frekwencja`) should be used sparingly to get detail when a change is detected.
@@ -354,4 +430,4 @@ Recommended approach:
 - Exact mapping of `kategoriaFrekwencji` values (only observed 1=present, 2=absent so far)
 - `rodzaj` values in SprawdzianyTablica (1=test? 2=quiz?)
 - Session cookie expiry duration (observed to survive at least a few minutes; longer-term testing needed)
-- Whether `/api/Wiadomosci` has a working detail endpoint (the Tablica version only returns unread count)
+- Pagination: does `idLastWiadomosc` work for fetching older messages beyond the first page?

@@ -16,6 +16,7 @@ from vulcan_notify.models import (
     Exam,
     Grade,
     Homework,
+    Message,
     Student,
 )
 
@@ -35,6 +36,8 @@ class VulcanClient:
     def __init__(self, session_data: dict[str, Any]) -> None:
         self._session_data = session_data
         self._base_url: str = session_data["base_url"]
+        self._tenant: str = session_data.get("tenant", "")
+        self._messages_base = f"https://wiadomosci.eduvulcan.pl/{self._tenant}"
         self._ssl_ctx = _make_ssl_context()
         self._http: aiohttp.ClientSession | None = None
 
@@ -53,6 +56,25 @@ class VulcanClient:
     async def close(self) -> None:
         if self._http and not self._http.closed:
             await self._http.close()
+
+    async def _request_url(self, url: str) -> Any:
+        """Make a GET request to an absolute URL. Returns parsed JSON."""
+        session = await self._ensure_session()
+
+        async with session.get(url, ssl=self._ssl_ctx) as resp:
+            content_type = resp.headers.get("content-type", "")
+
+            if "text/html" in content_type:
+                raise SessionExpiredError(
+                    "Session expired. Run 'vulcan-notify auth' to re-authenticate."
+                )
+
+            if resp.status != 200:
+                text = await resp.text()
+                logger.warning("API error %d for %s: %s", resp.status, url, text[:200])
+                return None
+
+            return await resp.json()
 
     async def _request(self, path: str) -> Any:
         """Make a GET request to the API. Returns parsed JSON.
@@ -241,3 +263,39 @@ class VulcanClient:
             announcements=safe_result(results[4], []),
             unread_messages=unread_count,
         )
+
+    # ── Messages (wiadomosci.eduvulcan.pl) ───────────────────────────
+
+    async def get_messages(self, page_size: int = 50) -> list[Message]:
+        """Fetch received messages from the messages subdomain.
+
+        Returns up to page_size most recent messages (unified inbox).
+        """
+        data = await self._request_url(
+            f"{self._messages_base}/api/Odebrane?idLastWiadomosc=0&pageSize={page_size}"
+        )
+        if not data:
+            return []
+
+        return [
+            Message(
+                id=m["id"],
+                api_global_key=m.get("apiGlobalKey", ""),
+                sender=m.get("korespondenci", ""),
+                subject=m.get("temat", "").strip(),
+                date=m.get("data", ""),
+                mailbox=m.get("skrzynka", ""),
+                has_attachments=m.get("hasZalaczniki", False),
+                is_read=m.get("przeczytana", False),
+            )
+            for m in data
+        ]
+
+    async def get_message_detail(self, api_global_key: str) -> str | None:
+        """Fetch full message content (HTML) by its apiGlobalKey."""
+        data = await self._request_url(
+            f"{self._messages_base}/api/WiadomoscSzczegoly?apiGlobalKey={api_global_key}"
+        )
+        if not data:
+            return None
+        return data.get("tresc")

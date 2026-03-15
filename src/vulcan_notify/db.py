@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         Exam,
         Grade,
         Homework,
+        Message,
         Student,
     )
 
@@ -81,11 +82,14 @@ CREATE TABLE IF NOT EXISTS homework (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    student_key TEXT,
+    id INTEGER PRIMARY KEY,
+    api_global_key TEXT UNIQUE,
     sender TEXT NOT NULL,
     subject TEXT NOT NULL,
     date TEXT,
+    mailbox TEXT,
+    has_attachments BOOLEAN DEFAULT 0,
+    is_read BOOLEAN DEFAULT 0,
     content TEXT,
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -285,6 +289,61 @@ class Database:
             (student_key,),
         )
         return {row[0] for row in await cursor.fetchall()}
+
+    # ── Messages ─────────────────────────────────────────────────────
+
+    async def upsert_message(self, msg: Message) -> None:
+        await self.db.execute(
+            "INSERT INTO messages (id, api_global_key, sender, subject, date, "
+            "mailbox, has_attachments, is_read, content) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "is_read=excluded.is_read, content=COALESCE(excluded.content, messages.content)",
+            (
+                msg.id,
+                msg.api_global_key,
+                msg.sender,
+                msg.subject,
+                msg.date,
+                msg.mailbox,
+                msg.has_attachments,
+                msg.is_read,
+                msg.content,
+            ),
+        )
+        await self.db.commit()
+
+    async def get_message_ids(self) -> set[int]:
+        cursor = await self.db.execute("SELECT id FROM messages")
+        return {row[0] for row in await cursor.fetchall()}
+
+    async def get_message_by_id(self, message_id: int) -> dict[str, object] | None:
+        cursor = await self.db.execute(
+            "SELECT id, api_global_key, sender, subject, date, mailbox, "
+            "has_attachments, is_read, content FROM messages WHERE id = ?",
+            (message_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "api_global_key": row[1],
+            "sender": row[2],
+            "subject": row[3],
+            "date": row[4],
+            "mailbox": row[5],
+            "has_attachments": row[6],
+            "is_read": row[7],
+            "content": row[8],
+        }
+
+    async def update_message_content(self, message_id: int, content: str) -> None:
+        await self.db.execute(
+            "UPDATE messages SET content = ? WHERE id = ?",
+            (content, message_id),
+        )
+        await self.db.commit()
 
     # ── Sync state ───────────────────────────────────────────────────
 
