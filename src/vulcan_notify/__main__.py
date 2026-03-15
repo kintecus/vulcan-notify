@@ -8,7 +8,8 @@ from vulcan_notify.auth import load_session, login_and_save_session, test_sessio
 from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
-from vulcan_notify.display import format_full_sync
+from vulcan_notify.display import BOLD, RESET, format_full_sync
+from vulcan_notify.summarizer import summarize
 from vulcan_notify.sync import sync_all
 
 
@@ -52,11 +53,55 @@ async def cmd_sync() -> None:
         output = format_full_sync(result, settings.message_sender_whitelist)
         print(output)
 
+        summary = await summarize(output, settings)
+        if summary:
+            print(f"\n{BOLD}AI Summary{RESET}")
+            print(summary)
+
     except SessionExpiredError:
         print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
         sys.exit(1)
     finally:
         await client.close()
+        await db.close()
+
+
+async def cmd_summarize(days: int = 7) -> None:
+    """Summarize stored messages using AI."""
+    if not settings.llm_api_key:
+        print("LLM_API_KEY not set. Configure it in .env to use AI summaries.")
+        sys.exit(1)
+
+    db = Database(settings.db_path)
+    await db.connect()
+
+    try:
+        messages = await db.get_recent_messages(days=days)
+        if not messages:
+            print(f"No messages in the last {days} days. Try a larger range with --days.")
+            sys.exit(1)
+
+        # Format messages as plain text for the LLM
+        lines: list[str] = []
+        for msg in messages:
+            lines.append(f"From: {msg['sender']}")
+            lines.append(f"Subject: {msg['subject']}")
+            lines.append(f"Date: {msg['date']}")
+            if msg["mailbox"]:
+                lines.append(f"Mailbox: {msg['mailbox']}")
+            if msg["content"]:
+                lines.append(f"Content: {msg['content']}")
+            lines.append("")
+
+        text = "\n".join(lines)
+        summary = await summarize(text, settings, profile="messages")
+        if summary:
+            print(f"{BOLD}Messages Summary (last {days} days, {len(messages)} messages){RESET}")
+            print(summary)
+        else:
+            print("Failed to generate summary.")
+            sys.exit(1)
+    finally:
         await db.close()
 
 
@@ -72,11 +117,18 @@ def main() -> None:
             asyncio.run(cmd_test())
         case "sync":
             asyncio.run(cmd_sync())
+        case "summarize":
+            days = 7
+            for i, arg in enumerate(sys.argv[2:], start=2):
+                if arg == "--days" and i + 1 < len(sys.argv):
+                    days = int(sys.argv[i + 1])
+            asyncio.run(cmd_summarize(days=days))
         case _:
-            print("Usage: vulcan-notify [auth|test|sync]")
-            print("  auth  - Interactive login and save session")
-            print("  test  - Test if saved session is valid")
-            print("  sync  - Fetch latest data and show changes (default)")
+            print("Usage: vulcan-notify [auth|test|sync|summarize]")
+            print("  auth      - Interactive login and save session")
+            print("  test      - Test if saved session is valid")
+            print("  sync      - Fetch latest data and show changes (default)")
+            print("  summarize - AI summary of stored messages")
             sys.exit(1)
 
 

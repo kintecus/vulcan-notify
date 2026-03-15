@@ -125,9 +125,20 @@ async def test_session(session_data: dict[str, Any]) -> bool:
     url = f"{base_url}/api/Context"
     cookie_header = "; ".join(f"{k}={v}" for k, v in cookies_for_url(session_data, url).items())
 
+    headers = {
+        "Cookie": cookie_header,
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+
     async with (
         aiohttp.ClientSession() as session,
-        session.get(url, ssl=ssl_ctx, headers={"Cookie": cookie_header}) as resp,
+        session.get(url, ssl=ssl_ctx, headers=headers) as resp,
     ):
         text = await resp.text()
         content_type = resp.headers.get("content-type", "")
