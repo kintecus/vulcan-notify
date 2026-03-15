@@ -63,6 +63,19 @@ class Homework:
 
 
 @dataclass
+class Message:
+    id: int
+    api_global_key: str  # apiGlobalKey (UUID for fetching detail)
+    sender: str  # korespondenci
+    subject: str  # temat
+    date: str  # data (ISO 8601)
+    mailbox: str  # skrzynka (which kid's mailbox)
+    has_attachments: bool  # hasZalaczniki
+    is_read: bool  # przeczytana
+    content: str | None = None  # tresc (HTML, from detail endpoint)
+
+
+@dataclass
 class DashboardData:
     """Combined response from all Tablica endpoints for one student."""
 
