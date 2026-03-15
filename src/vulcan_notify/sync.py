@@ -33,12 +33,7 @@ class SyncResult:
 
     @property
     def has_changes(self) -> bool:
-        return bool(
-            self.new_grades
-            or self.new_attendance
-            or self.new_exams
-            or self.new_homework
-        )
+        return bool(self.new_grades or self.new_attendance or self.new_exams or self.new_homework)
 
     @property
     def all_changes(self) -> list[Change]:

@@ -1,7 +1,7 @@
 [project]
 name = "vulcan-notify"
 version = "0.1.0"
-description = "Polling service for Vulcan/eduVulcan school e-journal notifications via ntfy.sh"
+description = "CLI tool that syncs eduVulcan school e-journal data locally and detects changes"
 requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.12",
@@ -9,8 +9,6 @@ dependencies = [
     "pydantic>=2.11",
     "pydantic-settings>=2.7",
     "playwright>=1.49",
-    "cryptography>=44.0",
-    "iris @ git+https://github.com/bbrjpl1310b/iris.git@master",
     "certifi>=2026.2.25",
 ]
 
@@ -29,9 +27,6 @@ vulcan-notify = "vulcan_notify.__main__:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vulcan_notify"]

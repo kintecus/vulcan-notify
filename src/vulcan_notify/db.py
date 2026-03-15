@@ -146,8 +146,14 @@ class Database:
             "name=excluded.name, class_name=excluded.class_name, school=excluded.school, "
             "diary_id=excluded.diary_id, mailbox_key=excluded.mailbox_key, "
             "updated_at=CURRENT_TIMESTAMP",
-            (student.key, student.name, student.class_name, student.school,
-             student.diary_id, student.mailbox_key),
+            (
+                student.key,
+                student.name,
+                student.class_name,
+                student.school,
+                student.diary_id,
+                student.mailbox_key,
+            ),
         )
         await self.db.commit()
 
@@ -163,8 +169,17 @@ class Database:
             "column_name=excluded.column_name, category=excluded.category, "
             "weight=excluded.weight, teacher=excluded.teacher, "
             "last_seen=CURRENT_TIMESTAMP",
-            (student_key, grade.column_id, grade.value, grade.date, grade.subject,
-             grade.column_name, grade.category, grade.weight, grade.teacher),
+            (
+                student_key,
+                grade.column_id,
+                grade.value,
+                grade.date,
+                grade.subject,
+                grade.column_name,
+                grade.category,
+                grade.weight,
+                grade.teacher,
+            ),
         )
         await self.db.commit()
 
@@ -177,8 +192,14 @@ class Database:
         rows = await cursor.fetchall()
         return [
             {
-                "column_id": r[0], "value": r[1], "date": r[2], "subject": r[3],
-                "column_name": r[4], "category": r[5], "weight": r[6], "teacher": r[7],
+                "column_id": r[0],
+                "value": r[1],
+                "date": r[2],
+                "subject": r[3],
+                "column_name": r[4],
+                "category": r[5],
+                "weight": r[6],
+                "teacher": r[7],
             }
             for r in rows
         ]
@@ -194,8 +215,16 @@ class Database:
             "category=excluded.category, subject=excluded.subject, "
             "teacher=excluded.teacher, time_from=excluded.time_from, "
             "time_to=excluded.time_to",
-            (student_key, entry.date, entry.lesson_number, entry.category,
-             entry.subject, entry.teacher, entry.time_from, entry.time_to),
+            (
+                student_key,
+                entry.date,
+                entry.lesson_number,
+                entry.category,
+                entry.subject,
+                entry.teacher,
+                entry.time_from,
+                entry.time_to,
+            ),
         )
         await self.db.commit()
 
@@ -208,8 +237,13 @@ class Database:
         rows = await cursor.fetchall()
         return [
             {
-                "date": r[0], "lesson_number": r[1], "category": r[2],
-                "subject": r[3], "teacher": r[4], "time_from": r[5], "time_to": r[6],
+                "date": r[0],
+                "lesson_number": r[1],
+                "category": r[2],
+                "subject": r[3],
+                "teacher": r[4],
+                "time_from": r[5],
+                "time_to": r[6],
             }
             for r in rows
         ]

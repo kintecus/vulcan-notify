@@ -116,9 +116,7 @@ class VulcanClient:
             for p in data
         ]
 
-    async def get_grades(
-        self, student: Student, period: ClassificationPeriod
-    ) -> list[Grade]:
+    async def get_grades(self, student: Student, period: ClassificationPeriod) -> list[Grade]:
         data = await self._request(
             f"/api/Oceny?key={student.key}&idOkresKlasyfikacyjny={period.id}"
         )

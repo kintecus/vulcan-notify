@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Polling service that detects changes in Vulcan/eduVulcan school e-journal (grades, messages, attendance, announcements) and sends push notifications via ntfy.sh. Built on top of the [iris](https://github.com/bbrjpl1310b/iris) library for eduVulcan API access.
+CLI tool that syncs data from the eduVulcan school e-journal (grades, attendance, exams, homework, messages) to a local SQLite database and detects changes between syncs. Uses cookie-based auth via Playwright browser login.
 
 ## Commands
 
@@ -12,14 +12,20 @@ Polling service that detects changes in Vulcan/eduVulcan school e-journal (grade
 # Install dependencies
 uv sync
 
-# Run the service
-uv run vulcan-notify run
+# Authenticate (opens browser)
+uv run vulcan-notify auth
+
+# Test session validity
+uv run vulcan-notify test
+
+# Sync data and show changes (default command)
+uv run vulcan-notify sync
 
 # Run all tests
 uv run pytest
 
-# Run a single test
-uv run pytest tests/test_differ.py::test_new_grade_detected
+# Run a single test file
+uv run pytest tests/test_sync.py -x -q
 
 # Lint and format
 uv run ruff check --fix .
@@ -27,37 +33,43 @@ uv run ruff format .
 
 # Type checking
 uv run mypy src/
-
-# Pre-commit hooks (ruff check + format)
-uv run pre-commit run --all-files
 ```
 
 ## Architecture
 
-The service follows a linear pipeline: **Auth -> Poll -> Diff -> Notify**.
+The tool follows a linear pipeline: **Auth -> Client -> Sync -> Diff -> Display**.
 
-- `auth.py` - Playwright-based browser login flow. Intercepts JWT tokens from the eduVulcan auth redirect, then registers an RSA keypair as a mobile device via iris. Credentials are serialized to `credential.json` as `RsaCredential` (pydantic model from iris).
+- `auth.py` - Playwright-based browser login. Saves session cookies to `session.json` after user logs into eduvulcan.pl. Also provides `cookies_for_url()` and `_make_ssl_context()` used by the client.
 
-- `poller.py` - `Poller` class runs an async loop on a configurable interval. Uses `IrisHebeCeApi` (from iris) to fetch grades, messages, attendance, and announcements. On first run, populates baseline state without sending notifications (tracked via `poll_state` table).
+- `client.py` - `VulcanClient` wraps aiohttp for the uczen.eduvulcan.pl JSON API. Handles cookie auth, SSL (certifi), and session expiry detection (HTML response = expired). Returns typed dataclasses from `models.py`.
 
-- `differ.py` - Stateless change detection. Each `detect_*_changes()` function takes API response objects and a `Database`, hashes each item with `_hash_dict()` (SHA-256, truncated to 16 chars), and compares against stored hashes. Returns `Change` dataclasses with ntfy-ready fields (title, body, priority, tags).
+- `models.py` - Dataclasses for all API response types: `Student`, `Grade`, `AttendanceEntry`, `Exam`, `Homework`, `ClassificationPeriod`, `DashboardData`.
 
-- `db.py` - `Database` class wrapping aiosqlite. Two tables: `seen_items` (item_type + item_id composite PK, stores hashes for dedup) and `poll_state` (key-value for service state like "initialized"). All writes commit immediately.
+- `sync.py` - `sync_all()` orchestrates per-student sync: fetch data via client, diff against stored state, upsert into database. Returns `SyncResult` per student. First sync stores baseline without reporting changes.
 
-- `notifier.py` - Single `send_notification()` function that POSTs to ntfy.sh via aiohttp. Uses ntfy headers (Title, Priority, Tags, Click) rather than JSON body.
+- `differ.py` - Compares fetched API data against stored database rows. `diff_grades()` detects new/updated grades by column_id. `diff_attendance()` detects new records by (date, lesson_number). Returns `Change` dataclasses.
 
-- `config.py` - `pydantic-settings` `Settings` singleton loaded from `.env`. All config is via environment variables.
+- `display.py` - Formats `SyncResult` for terminal output with ANSI colors (auto-disabled when piped). Groups by student, then by data type.
+
+- `db.py` - `Database` class wrapping aiosqlite. Normalized tables: students, grades, attendance, exams, homework, messages, sync_state. All writes use INSERT OR REPLACE for idempotent upserts.
+
+- `config.py` - `pydantic-settings` `Settings` singleton loaded from `.env`.
 
 ## Key dependencies
 
-- **iris** - eduVulcan API client (installed from git). Provides `IrisHebeCeApi` and `RsaCredential`. API objects have `.model_dump()` for serialization.
-- **playwright** - only used in auth flow, not at runtime
-- **aiohttp** - HTTP client for ntfy.sh
-- **aiosqlite** - async SQLite for state storage
+- **playwright** - browser automation for auth flow only
+- **aiohttp** - HTTP client for eduVulcan API
+- **aiosqlite** - async SQLite storage
+- **certifi** - CA certificates for SSL
+- **pydantic-settings** - config from environment variables
 
 ## Testing patterns
 
 - Tests use `pytest-asyncio` with `asyncio_mode = "auto"` (no `@pytest.mark.asyncio` needed)
 - The `db` fixture in `conftest.py` provides a temporary SQLite database
-- API objects are faked with simple classes that implement `model_dump()` - no iris dependency needed in tests
-- aiohttp is mocked with nested async context manager mocks (see `_make_mock_session` in `test_notifier.py`)
+- `VulcanClient` is mocked with `AsyncMock` in sync tests
+- aiohttp is mocked with `MagicMock` in client tests (see `_mock_response` pattern in `test_client.py`)
+
+## API reference
+
+See `docs/eduvulcan-api.md` for the reverse-engineered eduVulcan web API documentation.
