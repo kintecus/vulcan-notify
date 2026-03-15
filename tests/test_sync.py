@@ -62,6 +62,8 @@ def _make_mock_client(
     client.get_exams = AsyncMock(return_value=[] if exams is None else exams)
     client.get_homework = AsyncMock(return_value=[] if homework is None else homework)
     client.get_dashboard = AsyncMock(return_value=DashboardData(unread_messages=5))
+    client.get_messages = AsyncMock(return_value=[])
+    client.get_message_detail = AsyncMock(return_value=None)
     client.close = AsyncMock()
     return client
 
@@ -73,7 +75,6 @@ async def test_first_sync_stores_baseline(db: Database) -> None:
 
     assert result.is_first_sync is True
     assert result.has_changes is False
-    assert result.unread_messages == 5
 
     # Data should be stored
     rows = await db.get_grades_for_student("KEYA")
@@ -154,15 +155,15 @@ async def test_new_exam_detected(db: Database) -> None:
 async def test_sync_all_multiple_students(db: Database) -> None:
     """sync_all should return separate results per student."""
     client = _make_mock_client(students=[STUDENT_A, STUDENT_B])
-    results = await sync_all(client, db)
+    full = await sync_all(client, db)
 
-    assert len(results) == 2
-    assert results[0].student.name == "Jan"
-    assert results[1].student.name == "Anna"
+    assert len(full.student_results) == 2
+    assert full.student_results[0].student.name == "Jan"
+    assert full.student_results[1].student.name == "Anna"
 
 
 async def test_sync_all_no_students(db: Database) -> None:
-    """sync_all with no students returns empty list."""
+    """sync_all with no students returns empty FullSyncResult."""
     client = _make_mock_client(students=[])
-    results = await sync_all(client, db)
-    assert results == []
+    full = await sync_all(client, db)
+    assert full.student_results == []

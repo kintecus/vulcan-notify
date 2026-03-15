@@ -12,9 +12,7 @@ from vulcan_notify.differ import Change, diff_attendance, diff_exams, diff_grade
 if TYPE_CHECKING:
     from vulcan_notify.client import VulcanClient
     from vulcan_notify.db import Database
-    from vulcan_notify.models import (
-        Student,
-    )
+    from vulcan_notify.models import Message, Student
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +38,15 @@ class SyncResult:
         return self.new_grades + self.new_attendance + self.new_exams + self.new_homework
 
 
+@dataclass
+class FullSyncResult:
+    """Result of a full sync cycle (all students + messages)."""
+
+    student_results: list[SyncResult]
+    new_messages: list[Message] = field(default_factory=list)
+    is_first_message_sync: bool = False
+
+
 async def sync_student(
     client: VulcanClient,
     db: Database,
@@ -58,7 +65,6 @@ async def sync_student(
     try:
         periods = await client.get_periods(student)
         if periods:
-            # Use the most recent period
             current_period = max(periods, key=lambda p: p.number)
             grades = await client.get_grades(student, current_period)
 
@@ -73,7 +79,6 @@ async def sync_student(
     # ── Attendance ───────────────────────────────────────────────
     try:
         now = datetime.now()
-        # Fetch current week (Mon-Sun)
         monday = now - timedelta(days=now.weekday())
         sunday = monday + timedelta(days=6)
         date_from = monday.strftime("%Y-%m-%dT00:00:00.000Z")
@@ -113,13 +118,6 @@ async def sync_student(
     except Exception:
         logger.exception("Failed to sync homework for %s", student.name)
 
-    # ── Messages (just unread count for now) ─────────────────────
-    try:
-        dashboard = await client.get_dashboard(student)
-        result.unread_messages = dashboard.unread_messages
-    except Exception:
-        logger.exception("Failed to fetch dashboard for %s", student.name)
-
     # Mark sync complete
     await db.set_state(
         f"last_sync:{student.key}",
@@ -129,20 +127,66 @@ async def sync_student(
     return result
 
 
+async def sync_messages(
+    client: VulcanClient,
+    db: Database,
+) -> tuple[list[Message], bool]:
+    """Sync messages (unified inbox). Returns (new_messages, is_first_sync)."""
+
+    last_msg_sync = await db.get_state("last_sync:messages")
+    is_first = last_msg_sync is None
+
+    try:
+        messages = await client.get_messages(page_size=50)
+    except Exception:
+        logger.exception("Failed to fetch messages")
+        return [], is_first
+
+    known_ids = await db.get_message_ids()
+    new_messages: list[Message] = []
+
+    for msg in messages:
+        if msg.id not in known_ids and not is_first:
+            new_messages.append(msg)
+        await db.upsert_message(msg)
+
+    # Fetch content for new messages
+    for msg in new_messages:
+        try:
+            content = await client.get_message_detail(msg.api_global_key)
+            if content:
+                msg.content = content
+                await db.update_message_content(msg.id, content)
+        except Exception:
+            logger.exception("Failed to fetch message detail for %d", msg.id)
+
+    await db.set_state("last_sync:messages", datetime.now().isoformat())
+
+    return new_messages, is_first
+
+
 async def sync_all(
     client: VulcanClient,
     db: Database,
-) -> list[SyncResult]:
-    """Sync all students sequentially. Returns results per student."""
+) -> FullSyncResult:
+    """Sync all students and messages. Returns combined result."""
     students = await client.get_students()
     if not students:
         logger.warning("No students found in account")
-        return []
+        return FullSyncResult(student_results=[])
 
-    results: list[SyncResult] = []
+    student_results: list[SyncResult] = []
     for student in students:
         logger.info("Syncing %s (%s)...", student.name, student.class_name)
         result = await sync_student(client, db, student)
-        results.append(result)
+        student_results.append(result)
 
-    return results
+    # Sync messages (unified inbox, once for all students)
+    logger.info("Syncing messages...")
+    new_messages, is_first_msg = await sync_messages(client, db)
+
+    return FullSyncResult(
+        student_results=student_results,
+        new_messages=new_messages,
+        is_first_message_sync=is_first_msg,
+    )
