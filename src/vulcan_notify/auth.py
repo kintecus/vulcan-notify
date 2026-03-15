@@ -124,10 +124,7 @@ async def test_session(session_data: dict[str, Any]) -> bool:
         text = await resp.text()
         content_type = resp.headers.get("content-type", "")
 
-        print(
-            f"[auth] Response: status={resp.status}"
-            f" content-type={content_type} len={len(text)}"
-        )
+        print(f"[auth] Response: status={resp.status} content-type={content_type} len={len(text)}")
 
         if resp.status != 200:
             print(f"[auth] Session invalid: status {resp.status}")
@@ -136,10 +133,7 @@ async def test_session(session_data: dict[str, Any]) -> bool:
 
         # If we got HTML back, the session is expired (redirect to login)
         if "text/html" in content_type:
-            print(
-                "[auth] Got HTML instead of JSON"
-                " - session expired or cookies not sent correctly"
-            )
+            print("[auth] Got HTML instead of JSON - session expired or cookies not sent correctly")
             print(f"[auth] Body preview: {text[:300]}")
             return False
 

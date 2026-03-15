@@ -204,9 +204,7 @@ async def test_get_exams(session_data: dict, student: Student) -> None:
 
 
 async def test_get_homework(session_data: dict, student: Student) -> None:
-    hw_response = [
-        {"id": 10002, "data": "2026-03-16T00:00:00+01:00", "przedmiot": "Plastyka"}
-    ]
+    hw_response = [{"id": 10002, "data": "2026-03-16T00:00:00+01:00", "przedmiot": "Plastyka"}]
 
     mock_resp = _mock_response(hw_response)
     mock_sess = _mock_session(mock_resp)

@@ -14,20 +14,34 @@ from vulcan_notify.models import (
 from vulcan_notify.sync import sync_all, sync_student
 
 STUDENT_A = Student(
-    key="KEYA", name="Jan", class_name="3A",
-    school="Szkola", diary_id=1001, mailbox_key="aaa",
+    key="KEYA",
+    name="Jan",
+    class_name="3A",
+    school="Szkola",
+    diary_id=1001,
+    mailbox_key="aaa",
 )
 STUDENT_B = Student(
-    key="KEYB", name="Anna", class_name="5B",
-    school="Szkola", diary_id=1002, mailbox_key="bbb",
+    key="KEYB",
+    name="Anna",
+    class_name="5B",
+    school="Szkola",
+    diary_id=1002,
+    mailbox_key="bbb",
 )
 
 PERIOD = ClassificationPeriod(id=1, number=2, date_from="2026-02-01", date_to="2026-08-31")
 
 GRADE = Grade(
-    column_id=100, value="5", date="15.03.2026",
-    subject="Math", column_name="Sprawdzian 1", category="Biezace",
-    weight=2, teacher="Nowak A.", changed_since_login=False,
+    column_id=100,
+    value="5",
+    date="15.03.2026",
+    subject="Math",
+    column_name="Sprawdzian 1",
+    category="Biezace",
+    weight=2,
+    teacher="Nowak A.",
+    changed_since_login=False,
 )
 
 EXAM = Exam(id=10001, date="2026-03-16", subject="Przyroda", type=2)
@@ -100,9 +114,15 @@ async def test_new_grade_detected_on_second_sync(db: Database) -> None:
 async def test_changed_grade_detected(db: Database) -> None:
     """Changed grade value should be detected as update."""
     grade_v1 = Grade(
-        column_id=100, value="4", date="15.03.2026",
-        subject="Math", column_name="Sprawdzian 1", category="Biezace",
-        weight=2, teacher="Nowak A.", changed_since_login=False,
+        column_id=100,
+        value="4",
+        date="15.03.2026",
+        subject="Math",
+        column_name="Sprawdzian 1",
+        category="Biezace",
+        weight=2,
+        teacher="Nowak A.",
+        changed_since_login=False,
     )
 
     # First sync with grade=4

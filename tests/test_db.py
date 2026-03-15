@@ -6,9 +6,7 @@ from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Student
 
 async def test_schema_creation(db: Database) -> None:
     """Verify all tables are created."""
-    cursor = await db.db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )
+    cursor = await db.db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     tables = [row[0] for row in await cursor.fetchall()]
     assert "students" in tables
     assert "grades" in tables
@@ -21,8 +19,12 @@ async def test_schema_creation(db: Database) -> None:
 
 async def test_upsert_student(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
     await db.upsert_student(student)  # idempotent
@@ -34,8 +36,12 @@ async def test_upsert_student(db: Database) -> None:
 
 async def test_upsert_student_updates_name(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
 
@@ -49,15 +55,25 @@ async def test_upsert_student_updates_name(db: Database) -> None:
 
 async def test_upsert_grade_idempotent(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
 
     grade = Grade(
-        column_id=100, value="5", date="15.03.2026", subject="Math",
-        column_name="Test 1", category="Biezace",
-        weight=1, teacher="Nowak", changed_since_login=False,
+        column_id=100,
+        value="5",
+        date="15.03.2026",
+        subject="Math",
+        column_name="Test 1",
+        category="Biezace",
+        weight=1,
+        teacher="Nowak",
+        changed_since_login=False,
     )
     await db.upsert_grade("KEY1", grade)
     await db.upsert_grade("KEY1", grade)
@@ -69,15 +85,25 @@ async def test_upsert_grade_idempotent(db: Database) -> None:
 
 async def test_upsert_grade_updates_value(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
 
     grade = Grade(
-        column_id=100, value="4", date="15.03.2026", subject="Math",
-        column_name="Test 1", category="Biezace",
-        weight=1, teacher="Nowak", changed_since_login=False,
+        column_id=100,
+        value="4",
+        date="15.03.2026",
+        subject="Math",
+        column_name="Test 1",
+        category="Biezace",
+        weight=1,
+        teacher="Nowak",
+        changed_since_login=False,
     )
     await db.upsert_grade("KEY1", grade)
 
@@ -91,16 +117,26 @@ async def test_upsert_grade_updates_value(db: Database) -> None:
 
 async def test_get_grades_for_student(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
 
     for i in range(3):
         grade = Grade(
-            column_id=100 + i, value=str(3 + i), date="15.03.2026", subject="Math",
-            column_name=f"Test {i}", category="Biezace",
-            weight=1, teacher="Nowak", changed_since_login=False,
+            column_id=100 + i,
+            value=str(3 + i),
+            date="15.03.2026",
+            subject="Math",
+            column_name=f"Test {i}",
+            category="Biezace",
+            weight=1,
+            teacher="Nowak",
+            changed_since_login=False,
         )
         await db.upsert_grade("KEY1", grade)
 
@@ -114,14 +150,23 @@ async def test_get_grades_for_student(db: Database) -> None:
 
 async def test_upsert_attendance(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
 
     entry = AttendanceEntry(
-        lesson_number=3, category=2, date="2026-03-14", subject="Math",
-        teacher="Nowak", time_from="09:50", time_to="10:35",
+        lesson_number=3,
+        category=2,
+        date="2026-03-14",
+        subject="Math",
+        teacher="Nowak",
+        time_from="09:50",
+        time_to="10:35",
     )
     await db.upsert_attendance("KEY1", entry)
     await db.upsert_attendance("KEY1", entry)  # idempotent
@@ -133,8 +178,12 @@ async def test_upsert_attendance(db: Database) -> None:
 
 async def test_upsert_exam(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
 
@@ -149,8 +198,12 @@ async def test_upsert_exam(db: Database) -> None:
 
 async def test_upsert_homework(db: Database) -> None:
     student = Student(
-        key="KEY1", name="Jan", class_name="3A",
-        school="Szkola", diary_id=1001, mailbox_key="aaa",
+        key="KEY1",
+        name="Jan",
+        class_name="3A",
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
     )
     await db.upsert_student(student)
 

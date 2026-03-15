@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# >>> tribe-coding/plantuml >>>
+# PlantUML URL sync check — installed by plantuml Claude Code plugin.
+# Do not edit between markers; managed automatically by setup-project.sh.
+PLANTUML_STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM -- '*.md')
+
+if [ -n "$PLANTUML_STAGED_MD" ]; then
+    PLANTUML_ENCODER=""
+    for candidate in \
+        "$HOME/.claude/plugins/cache/tribe-coding/plantuml/scripts/plantuml-encode.py" \
+        "$HOME/.claude/plugins/marketplaces/tribe-coding/plugins/plantuml/scripts/plantuml-encode.py" \
+        "$(git rev-parse --show-toplevel 2>/dev/null)/scripts/plantuml-encode.py"; do
+        if [ -f "$candidate" ]; then
+            PLANTUML_ENCODER="$candidate"
+            break
+        fi
+    done
+
+    if [ -n "$PLANTUML_ENCODER" ]; then
+        echo "Checking PlantUML diagrams in: $PLANTUML_STAGED_MD"
+        if ! python3 "$PLANTUML_ENCODER" --check $PLANTUML_STAGED_MD; then
+            echo ""
+            echo "Commit blocked: PlantUML URLs out of sync."
+            echo "  Fix: python3 $PLANTUML_ENCODER --sync <file.md>"
+            exit 1
+        fi
+    fi
+fi
+# <<< tribe-coding/plantuml <<<
