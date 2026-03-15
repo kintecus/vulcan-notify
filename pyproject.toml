@@ -1,0 +1,69 @@
+[project]
+name = "vulcan-notify"
+version = "0.1.0"
+description = "Polling service for Vulcan/eduVulcan school e-journal notifications via ntfy.sh"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.12",
+    "aiosqlite>=0.20",
+    "pydantic>=2.11",
+    "pydantic-settings>=2.7",
+    "playwright>=1.49",
+    "cryptography>=44.0",
+    "iris @ git+https://github.com/bbrjpl1310b/iris.git@master",
+    "certifi>=2026.2.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.9",
+    "pre-commit>=4.0",
+    "mypy>=1.14",
+]
+
+[project.scripts]
+vulcan-notify = "vulcan_notify.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vulcan_notify"]
+
+[tool.ruff]
+target-version = "py312"
+src = ["src", "tests"]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "RUF",   # ruff-specific
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["vulcan_notify"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
