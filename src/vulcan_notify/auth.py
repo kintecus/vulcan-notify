@@ -51,13 +51,21 @@ async def login_and_save_session(session_path: Path) -> dict[str, Any]:
         # Let the dashboard finish loading
         await asyncio.sleep(2)
 
+        # Extract tenant from dashboard URL before navigating away
+        parts = dashboard_url.split("uczen.eduvulcan.pl/")
+        tenant = parts[1].split("/")[0] if len(parts) > 1 else ""
+
+        # Visit messages subdomain to establish its session cookies
+        if tenant:
+            print("[auth] Establishing messages session...")
+            await page.goto(
+                f"https://wiadomosci.eduvulcan.pl/{tenant}/App",
+                wait_until="networkidle",
+            )
+            await asyncio.sleep(2)
+
         cookies = await context.cookies()
         await browser.close()
-
-    # Extract tenant from dashboard URL
-    # e.g. https://uczen.eduvulcan.pl/{tenant}/App/.../tablica
-    parts = dashboard_url.split("uczen.eduvulcan.pl/")
-    tenant = parts[1].split("/")[0] if len(parts) > 1 else ""
 
     session_data = {
         "cookies": cookies,
