@@ -226,6 +226,13 @@ class Database:
         )
         await self.db.commit()
 
+    async def get_exam_ids_for_student(self, student_key: str) -> set[int]:
+        cursor = await self.db.execute(
+            "SELECT id FROM exams WHERE student_key = ?",
+            (student_key,),
+        )
+        return {row[0] for row in await cursor.fetchall()}
+
     # ── Homework ─────────────────────────────────────────────────────
 
     async def upsert_homework(self, student_key: str, hw: Homework) -> None:
@@ -237,6 +244,13 @@ class Database:
             (hw.id, student_key, hw.date, hw.subject),
         )
         await self.db.commit()
+
+    async def get_homework_ids_for_student(self, student_key: str) -> set[int]:
+        cursor = await self.db.execute(
+            "SELECT id FROM homework WHERE student_key = ?",
+            (student_key,),
+        )
+        return {row[0] for row in await cursor.fetchall()}
 
     # ── Sync state ───────────────────────────────────────────────────
 

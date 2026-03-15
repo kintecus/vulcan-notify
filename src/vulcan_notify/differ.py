@@ -1,75 +1,84 @@
-"""Change detection and diff engine for Vulcan API data."""
+"""Change detection - compares fetched API data against stored database rows."""
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
 
-from vulcan_notify.db import Database  # noqa: TC001
+if TYPE_CHECKING:
+    from vulcan_notify.db import Database
+    from vulcan_notify.models import (
+        AttendanceEntry,
+        Exam,
+        Grade,
+        Homework,
+        Student,
+    )
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class Change:
-    """Represents a detected change in Vulcan data."""
+    """A detected change in school data."""
 
-    item_type: str  # "grade", "message", "attendance", "announcement"
-    item_id: str
+    change_type: str  # "new" or "updated"
+    item_type: str  # "grade", "attendance", "exam", "homework"
+    student_name: str
     title: str
     body: str
-    priority: int = 3  # ntfy priority 1-5
+    priority: int = 3
     tags: list[str] | None = None
 
 
-def _hash_dict(data: dict[str, Any]) -> str:
-    """Create a stable hash of a dictionary for change detection."""
-    # Sort keys for deterministic hashing
-    import json
-
-    serialized = json.dumps(data, sort_keys=True, default=str)
-    return hashlib.sha256(serialized.encode()).hexdigest()[:16]
-
-
-async def detect_grade_changes(
-    grades: list[Any],
+async def diff_grades(
+    student: Student,
+    fetched: list[Grade],
     db: Database,
 ) -> list[Change]:
-    """Detect new or changed grades."""
+    """Compare fetched grades against stored grades.
+
+    New column_id = new grade. Same column_id but different value = updated.
+    """
+    stored = await db.get_grades_for_student(student.key)
+    stored_by_id = {row["column_id"]: row for row in stored}
     changes: list[Change] = []
 
-    for grade in grades:
-        grade_data = grade.model_dump() if hasattr(grade, "model_dump") else dict(grade)
-        grade_id = str(grade_data.get("id", grade_data.get("key", "")))
-        grade_hash = _hash_dict(grade_data)
+    for grade in fetched:
+        existing = stored_by_id.get(grade.column_id)
 
-        if await db.is_new_or_changed("grade", grade_id, grade_hash):
-            subject = grade_data.get("subject", {})
-            subject_name = (
-                subject.get("name", "Unknown") if isinstance(subject, dict) else str(subject)
-            )
-            content = grade_data.get("content", grade_data.get("entry", ""))
-            teacher = grade_data.get("teacher", {})
-            teacher_name = (
-                teacher.get("display_name", "") if isinstance(teacher, dict) else str(teacher)
-            )
-            column = grade_data.get("column", {})
-            category = column.get("name", "") if isinstance(column, dict) else ""
-
-            body_parts = [f"Subject: {subject_name}", f"Grade: {content}"]
-            if category:
-                body_parts.append(f"Category: {category}")
-            if teacher_name:
-                body_parts.append(f"Teacher: {teacher_name}")
-
+        if existing is None:
             changes.append(
                 Change(
+                    change_type="new",
                     item_type="grade",
-                    item_id=grade_id,
-                    title=f"New grade: {content} in {subject_name}",
-                    body="\n".join(body_parts),
+                    student_name=student.name,
+                    title=f"New grade: {grade.value} in {grade.subject}",
+                    body=(
+                        f"Subject: {grade.subject}\n"
+                        f"Grade: {grade.value}\n"
+                        f"Category: {grade.column_name}\n"
+                        f"Teacher: {grade.teacher}"
+                    ),
+                    priority=4,
+                    tags=["pencil2", "school"],
+                )
+            )
+        elif existing["value"] != grade.value:
+            old_value = existing["value"]
+            changes.append(
+                Change(
+                    change_type="updated",
+                    item_type="grade",
+                    student_name=student.name,
+                    title=f"Grade changed: {old_value} -> {grade.value} in {grade.subject}",
+                    body=(
+                        f"Subject: {grade.subject}\n"
+                        f"Old: {old_value} -> New: {grade.value}\n"
+                        f"Category: {grade.column_name}\n"
+                        f"Teacher: {grade.teacher}"
+                    ),
                     priority=4,
                     tags=["pencil2", "school"],
                 )
@@ -78,98 +87,90 @@ async def detect_grade_changes(
     return changes
 
 
-async def detect_message_changes(
-    messages: list[Any],
+async def diff_attendance(
+    student: Student,
+    fetched: list[AttendanceEntry],
     db: Database,
 ) -> list[Change]:
-    """Detect new messages."""
+    """Compare fetched attendance against stored records.
+
+    New (date, lesson_number) combo = new record.
+    """
+    stored = await db.get_attendance_for_student(student.key)
+    stored_keys = {(row["date"], row["lesson_number"]) for row in stored}
     changes: list[Change] = []
 
-    for msg in messages:
-        msg_data = msg.model_dump() if hasattr(msg, "model_dump") else dict(msg)
-        msg_id = str(msg_data.get("id", msg_data.get("key", "")))
-        msg_hash = _hash_dict(msg_data)
+    for entry in fetched:
+        if (entry.date, entry.lesson_number) not in stored_keys and entry.category != 1:
+                category_name = {2: "Absent", 3: "Late", 4: "Excused"}.get(
+                    entry.category, f"Category {entry.category}"
+                )
+                changes.append(
+                    Change(
+                        change_type="new",
+                        item_type="attendance",
+                        student_name=student.name,
+                        title=f"Attendance: {category_name}",
+                        body=(
+                            f"Date: {entry.date}\n"
+                            f"Lesson {entry.lesson_number}: {entry.subject}\n"
+                            f"Teacher: {entry.teacher}"
+                        ),
+                        priority=3,
+                        tags=["calendar", "school"],
+                    )
+                )
 
-        if await db.is_new_or_changed("message", msg_id, msg_hash):
-            sender = msg_data.get("sender", {})
-            sender_name = sender.get("name", "Unknown") if isinstance(sender, dict) else str(sender)
-            subject = msg_data.get("subject", "No subject")
+    return changes
 
+
+async def diff_exams(
+    student: Student,
+    fetched: list[Exam],
+    db: Database,
+) -> list[Change]:
+    """Detect new exams (by id)."""
+    stored_ids = await db.get_exam_ids_for_student(student.key)
+    changes: list[Change] = []
+
+    for exam in fetched:
+        if exam.id not in stored_ids:
+            exam_type = {1: "Test", 2: "Quiz"}.get(exam.type, "Exam")
             changes.append(
                 Change(
-                    item_type="message",
-                    item_id=msg_id,
-                    title=f"Message from {sender_name}",
-                    body=f"Subject: {subject}",
-                    priority=4,
-                    tags=["envelope", "school"],
+                    change_type="new",
+                    item_type="exam",
+                    student_name=student.name,
+                    title=f"Upcoming {exam_type}: {exam.subject}",
+                    body=f"Date: {exam.date}\nSubject: {exam.subject}",
+                    priority=3,
+                    tags=["memo", "school"],
                 )
             )
 
     return changes
 
 
-async def detect_attendance_changes(
-    attendance: list[Any],
+async def diff_homework(
+    student: Student,
+    fetched: list[Homework],
     db: Database,
 ) -> list[Change]:
-    """Detect attendance changes (absences, late arrivals)."""
+    """Detect new homework (by id)."""
+    stored_ids = await db.get_homework_ids_for_student(student.key)
     changes: list[Change] = []
 
-    for entry in attendance:
-        entry_data = entry.model_dump() if hasattr(entry, "model_dump") else dict(entry)
-        entry_id = str(entry_data.get("id", entry_data.get("key", "")))
-        entry_hash = _hash_dict(entry_data)
-
-        if await db.is_new_or_changed("attendance", entry_id, entry_hash):
-            date = entry_data.get("date", "")
-            subject = entry_data.get("subject", {})
-            subject_name = subject.get("name", "") if isinstance(subject, dict) else str(subject)
-            presence_type = entry_data.get("type", {})
-            type_name = (
-                presence_type.get("name", "Change")
-                if isinstance(presence_type, dict)
-                else str(presence_type)
-            )
-
+    for hw in fetched:
+        if hw.id not in stored_ids:
             changes.append(
                 Change(
-                    item_type="attendance",
-                    item_id=entry_id,
-                    title=f"Attendance: {type_name}",
-                    body=f"Date: {date}\nSubject: {subject_name}",
-                    priority=3,
-                    tags=["calendar", "school"],
-                )
-            )
-
-    return changes
-
-
-async def detect_announcement_changes(
-    announcements: list[Any],
-    db: Database,
-) -> list[Change]:
-    """Detect new announcements."""
-    changes: list[Change] = []
-
-    for ann in announcements:
-        ann_data = ann.model_dump() if hasattr(ann, "model_dump") else dict(ann)
-        ann_id = str(ann_data.get("id", ann_data.get("key", "")))
-        ann_hash = _hash_dict(ann_data)
-
-        if await db.is_new_or_changed("announcement", ann_id, ann_hash):
-            subject = ann_data.get("subject", "Announcement")
-            content = ann_data.get("content", "")
-
-            changes.append(
-                Change(
-                    item_type="announcement",
-                    item_id=ann_id,
-                    title=f"Announcement: {subject}",
-                    body=content[:200] if content else "New announcement",
-                    priority=3,
-                    tags=["loudspeaker", "school"],
+                    change_type="new",
+                    item_type="homework",
+                    student_name=student.name,
+                    title=f"Homework: {hw.subject}",
+                    body=f"Due: {hw.date}\nSubject: {hw.subject}",
+                    priority=2,
+                    tags=["books", "school"],
                 )
             )
 
