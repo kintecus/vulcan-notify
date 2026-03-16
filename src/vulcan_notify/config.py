@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     # Session file path (cookies from browser login)
     session_file: Path = Path("session.json")
 
+    # Auto-login credentials (optional - enables headless auth)
+    # Can also be read from macOS Keychain (service: vulcan-notify)
+    vulcan_login: str | None = None
+    vulcan_password: str | None = None
+
     # ntfy.sh
     ntfy_topic: str = "vulcan-notify"
     ntfy_server: str = "https://ntfy.sh"
