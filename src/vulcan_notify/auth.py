@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import platform
 import ssl  # noqa: TC003
+import subprocess
 from pathlib import Path  # noqa: TC003
 from typing import Any
 
@@ -13,6 +15,54 @@ import aiohttp
 from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
+
+KEYCHAIN_SERVICE = "vulcan-notify"
+
+
+def get_keychain_credentials() -> tuple[str, str] | None:
+    """Read login and password from macOS Keychain (service: vulcan-notify).
+
+    Returns (login, password) or None if not available.
+    """
+    if platform.system() != "Darwin":
+        return None
+
+    try:
+        # Get account name (login)
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+
+        account = ""
+        for line in result.stdout.splitlines():
+            # Format: "acct"<blob>="the.email@example.com"
+            if '"acct"' in line and "=" in line:
+                account = line.split("=", 1)[1].strip().strip('"')
+                break
+
+        if not account:
+            return None
+
+        # Get password
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+
+        password = result.stdout.strip()
+        if not password:
+            return None
+
+        return (account, password)
+    except FileNotFoundError:
+        return None
 
 EDUVULCAN_LOGIN_URL = "https://eduvulcan.pl"
 
@@ -78,6 +128,141 @@ async def login_and_save_session(session_path: Path) -> dict[str, Any]:
     print(f"[auth] Session saved to {session_path}")
     print(f"[auth] Tenant: {tenant}")
     print(f"[auth] Base URL: {session_data['base_url']}")
+
+    return session_data
+
+
+async def auto_login(session_path: Path, login: str, password: str) -> dict[str, Any]:
+    """Headless auto-login using stored credentials.
+
+    Steps:
+    1. Navigate to eduvulcan.pl/logowanie
+    2. Fill login, click Dalej
+    3. Fill password, click Zaloguj
+    4. Wait for redirect to eduvulcan.pl dashboard
+    5. Click first student to trigger redirect to uczen.eduvulcan.pl
+    6. Capture cookies and save session
+    """
+    dashboard_url = ""
+    login_complete = asyncio.Event()
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+
+        def handle_navigation(frame):  # type: ignore[no-untyped-def]
+            nonlocal dashboard_url
+            url = frame.url
+            if "uczen.eduvulcan.pl" in url and "/App/" in url:
+                dashboard_url = url
+                login_complete.set()
+
+        page.on("framenavigated", handle_navigation)
+
+        logger.info("Auto-login: navigating to login page")
+        await page.goto("https://eduvulcan.pl/logowanie")
+
+        # Dismiss cookie consent overlay if present
+        cookie_wrapper = page.locator("#respect-privacy-wrapper")
+        if await cookie_wrapper.count():
+            # Try clicking accept/close button inside the cookie iframe
+            cookie_frame = page.frame_locator("#respect-privacy-frame")
+            for btn_text in ["Akceptuję", "Zgadzam", "OK", "Zamknij"]:
+                btn = cookie_frame.locator(f'button:has-text("{btn_text}")').first
+                try:
+                    await btn.click(timeout=3000)
+                    await asyncio.sleep(0.5)
+                    break
+                except Exception:
+                    continue
+            else:
+                # If no button found, remove the overlay via JS
+                await page.evaluate("""
+                    () => {
+                        const el = document.getElementById('respect-privacy-wrapper');
+                        if (el) el.remove();
+                    }
+                """)
+
+        # Step 1: fill login
+        await page.fill('input[type="text"], input[name="login"], input[type="email"]', login)
+        await page.click('button:has-text("Dalej")')
+
+        # Step 2: fill password
+        await page.wait_for_selector('input[type="password"]', timeout=10000)
+        await page.fill('input[type="password"]', password)
+        await page.click('button:has-text("Zaloguj")')
+
+        # Wait for eduvulcan.pl dashboard to load (student picker)
+        await page.wait_for_url("**/eduvulcan.pl/**", timeout=30000)
+        await asyncio.sleep(2)
+
+        # Step 3: click first student to trigger redirect to uczen.eduvulcan.pl
+        # Try multiple strategies to find a clickable student entry
+        clicked = False
+        for selector in [
+            'a[href*="uczen.eduvulcan.pl"]',
+            'a[href*="/App/"]',
+            '[class*="student"]',
+            '[class*="uczen"]',
+            '[class*="account"]',
+        ]:
+            loc = page.locator(selector).first
+            if await loc.count():
+                await loc.click()
+                clicked = True
+                break
+
+        if not clicked:
+            # Last resort: use JavaScript to find and click the first student link
+            await page.evaluate("""
+                () => {
+                    const links = document.querySelectorAll('a[href]');
+                    for (const link of links) {
+                        if (link.href.includes('uczen.eduvulcan.pl')) {
+                            link.click();
+                            return;
+                        }
+                    }
+                }
+            """)
+
+        try:
+            await asyncio.wait_for(login_complete.wait(), timeout=30)
+        except TimeoutError as exc:
+            await browser.close()
+            raise TimeoutError(
+                "Auto-login: timed out waiting for redirect to uczen.eduvulcan.pl"
+            ) from exc
+
+        await asyncio.sleep(2)
+
+        # Extract tenant
+        parts = dashboard_url.split("uczen.eduvulcan.pl/")
+        tenant = parts[1].split("/")[0] if len(parts) > 1 else ""
+
+        # Visit messages subdomain
+        if tenant:
+            logger.info("Auto-login: establishing messages session")
+            await page.goto(
+                f"https://wiadomosci.eduvulcan.pl/{tenant}/App",
+                wait_until="networkidle",
+            )
+            await asyncio.sleep(2)
+
+        cookies = await context.cookies()
+        await browser.close()
+
+    session_data = {
+        "cookies": cookies,
+        "tenant": tenant,
+        "base_url": f"https://uczen.eduvulcan.pl/{tenant}",
+        "dashboard_url": dashboard_url,
+    }
+
+    session_path.write_text(json.dumps(session_data, indent=2, default=str))
+    logger.info("Auto-login: session saved to %s (tenant: %s)", session_path, tenant)
 
     return session_data
 

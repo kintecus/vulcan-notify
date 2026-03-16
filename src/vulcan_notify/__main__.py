@@ -3,8 +3,15 @@
 import asyncio
 import logging
 import sys
+from typing import Any
 
-from vulcan_notify.auth import load_session, login_and_save_session, test_session
+from vulcan_notify.auth import (
+    auto_login,
+    get_keychain_credentials,
+    load_session,
+    login_and_save_session,
+    test_session,
+)
 from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
@@ -36,9 +43,43 @@ async def cmd_test() -> None:
     print("Session is valid.")
 
 
+def _get_credentials() -> tuple[str, str] | None:
+    """Resolve credentials from .env or macOS Keychain."""
+    if settings.vulcan_login and settings.vulcan_password:
+        return (settings.vulcan_login, settings.vulcan_password)
+    return get_keychain_credentials()
+
+
+async def _ensure_session() -> dict[str, Any]:
+    """Load session, auto-reauth if expired and credentials are available."""
+    try:
+        session = load_session(settings.session_file)
+    except FileNotFoundError:
+        session = None
+
+    if session and await test_session(session):
+        return session
+
+    # Session missing or expired - try auto-login
+    creds = _get_credentials()
+    if creds:
+        print("Session expired. Auto-logging in...")
+        return await auto_login(settings.session_file, creds[0], creds[1])
+
+    if session is None:
+        print("No session file. Run 'vulcan-notify auth' to authenticate.")
+    else:
+        print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
+    print(
+        "Tip: set VULCAN_LOGIN/VULCAN_PASSWORD in .env, "
+        "or store in macOS Keychain (service: vulcan-notify)."
+    )
+    sys.exit(1)
+
+
 async def cmd_sync() -> None:
     """Fetch latest data and show changes since last sync."""
-    session = load_session(settings.session_file)
+    session = await _ensure_session()
     client = VulcanClient(session)
     db = Database(settings.db_path)
     await db.connect()
@@ -59,8 +100,27 @@ async def cmd_sync() -> None:
             print(summary)
 
     except SessionExpiredError:
-        print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
-        sys.exit(1)
+        # Try auto-reauth once if it fails mid-sync
+        creds = _get_credentials()
+        if creds:
+            print("Session expired mid-sync. Re-authenticating...")
+            await client.close()
+            session = await auto_login(settings.session_file, creds[0], creds[1])
+            client = VulcanClient(session)
+            result = await sync_all(client, db)
+            output = format_full_sync(result, settings.message_sender_whitelist)
+            print(output)
+            summary = await summarize(output, settings)
+            if summary:
+                print(f"\n{BOLD}AI Summary{RESET}")
+                print(summary)
+        else:
+            print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
+            print(
+                "Tip: set VULCAN_LOGIN/VULCAN_PASSWORD in .env, "
+                "or store in macOS Keychain (service: vulcan-notify)."
+            )
+            sys.exit(1)
     finally:
         await client.close()
         await db.close()
