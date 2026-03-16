@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # LLM (optional - all providers use OpenAI-compatible API)
     llm_base_url: str = "https://api.cerebras.ai/v1"
     llm_api_key: str | None = None
-    llm_model: str = "llama3.1-8b"
+    llm_model: str = "qwen-3-235b-a22b-instruct-2507"
     prompts_file: Path = Path("prompts.toml")
 
     # Logging
