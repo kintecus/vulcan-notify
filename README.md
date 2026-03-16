@@ -87,6 +87,102 @@ VULCAN_PASSWORD=your_password
 
 When credentials are available, `vulcan-notify sync` detects expired sessions and re-authenticates headlessly via Playwright - no manual browser interaction needed.
 
+## Database schema
+
+```plantuml
+@startuml
+title Database schema
+
+skinparam linetype ortho
+
+entity "students" as students #E8F4FD {
+  * **key** : TEXT <<PK>>
+  --
+  name : TEXT
+  class_name : TEXT
+  school : TEXT
+  diary_id : INTEGER
+  mailbox_key : TEXT
+  updated_at : TIMESTAMP
+}
+
+entity "grades" as grades #E8F5E9 {
+  * **student_key** : TEXT <<PK, FK>>
+  * **column_id** : INTEGER <<PK>>
+  --
+  value : TEXT
+  date : TEXT
+  subject : TEXT
+  column_name : TEXT
+  category : TEXT
+  weight : INTEGER
+  teacher : TEXT
+  first_seen : TIMESTAMP
+  last_seen : TIMESTAMP
+}
+
+entity "attendance" as attendance #E8F5E9 {
+  * **student_key** : TEXT <<PK, FK>>
+  * **date** : TEXT <<PK>>
+  * **lesson_number** : INTEGER <<PK>>
+  --
+  category : INTEGER
+  subject : TEXT
+  teacher : TEXT
+  time_from : TEXT
+  time_to : TEXT
+  first_seen : TIMESTAMP
+}
+
+entity "exams" as exams #E8F5E9 {
+  * **id** : INTEGER <<PK>>
+  --
+  student_key : TEXT <<FK>>
+  date : TEXT
+  subject : TEXT
+  type : INTEGER
+  first_seen : TIMESTAMP
+}
+
+entity "homework" as homework #E8F5E9 {
+  * **id** : INTEGER <<PK>>
+  --
+  student_key : TEXT <<FK>>
+  date : TEXT
+  subject : TEXT
+  first_seen : TIMESTAMP
+}
+
+entity "messages" as messages #FFF8E1 {
+  * **id** : INTEGER <<PK>>
+  --
+  api_global_key : TEXT <<UNIQUE>>
+  sender : TEXT
+  subject : TEXT
+  date : TEXT
+  mailbox : TEXT
+  has_attachments : BOOLEAN
+  is_read : BOOLEAN
+  content : TEXT
+  first_seen : TIMESTAMP
+}
+
+entity "sync_state" as sync_state #F5F5F5 {
+  * **key** : TEXT <<PK>>
+  --
+  value : TEXT
+  updated_at : TIMESTAMP
+}
+
+students ||--o{ grades
+students ||--o{ attendance
+students ||--o{ exams
+students ||--o{ homework
+@enduml
+```
+
+![Database schema](https://www.plantuml.com/plantuml/svg/lLLDJzmm4BtdLrXmYxg7IaMY22509DMgPQ7j8lKMJP8XSTSVAzifHD3_tid74cS3BEsXYXHvtjYxxptFJ4wj0-CgAGB7dK1s0GvIiCXiLgA48B0hhjPWG3B15RfwZKmRL-eWG4L7QhPdNPNJskuni6mJiFteCFuGNx27WB6GXU4Awp1aHsmP_LYou-FhpoSdb9dDwAL0Of-XA1DWRJB6Y8pMOeXp3gPEU4x8VB6CFaNV29J0HQhl4_gdOMUrpi5Xde1hiFbbz7rvTdaT_1xe5mPoxCXtovRwGVJnYNglAPb8UCVYJaQpAzEYaef8jNjwMbjAVu6eF5aDDKzabVx4p7bETB-uPG-TARJn9DuXBqetii8XqFMPOSyjDzOb5b6DR62Cp7u6z-m1vr3be39iBHh2VxIfqVnC8JGfWTPgqbl95CqhBdeM398dxaqyS5nYSckqt8AStkcJvmVUW-ogfLrDN7Zr_ZsB1WTwStOKGzjvlk3TL4ijyKwRLSjs4_mtmhlvIRflAFhUsmHiFuxZm-Zzs_Z1cYU5q2c8CSMRnVphJTJkirIlVXbCY8vrz5Da04gmD3qS5PDi1ziHEx-w-XATBIZ7RM8GyX6MQKKjybT6s5fb2GrYr_NO498P1ytpbYcwDLjU7dnF8_hnSJRJ3_tKcy13fqzIRULFq4s51QTqZhueVm00)
+
 ## Configuration
 
 All settings are via environment variables or `.env` file:
@@ -100,5 +196,5 @@ All settings are via environment variables or `.env` file:
 | `MESSAGE_SENDER_WHITELIST` | (empty) | Comma-separated sender names to filter messages |
 | `LLM_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible API base URL for AI summaries |
 | `LLM_API_KEY` | (none) | API key for AI summaries (disabled if unset) |
-| `LLM_MODEL` | `llama3.1-8b` | Model name for AI summaries |
+| `LLM_MODEL` | `qwen-3-235b-a22b-instruct-2507` | Model name for AI summaries |
 | `LOG_LEVEL` | `INFO` | Logging level |
