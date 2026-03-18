@@ -372,6 +372,95 @@ class Database:
         )
         await self.db.commit()
 
+    # ── Recent changes (for AI summarization) ───────────────────────
+
+    async def get_recent_changes(self, days: int = 1) -> dict[str, list[dict[str, object]]]:
+        """Fetch recently added grades, attendance, exams, and homework.
+
+        Returns a dict keyed by data type, each containing a list of records
+        joined with the student name for context.
+        """
+        since = f"-{days} days"
+        result: dict[str, list[dict[str, object]]] = {}
+
+        # Grades
+        cursor = await self.db.execute(
+            "SELECT s.name, g.subject, g.value, g.column_name, g.category, "
+            "g.weight, g.date, g.teacher "
+            "FROM grades g JOIN students s ON g.student_key = s.key "
+            "WHERE g.first_seen >= datetime('now', ?) "
+            "ORDER BY g.first_seen DESC",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        if rows:
+            result["grades"] = [
+                {
+                    "student": r[0],
+                    "subject": r[1],
+                    "value": r[2],
+                    "column_name": r[3],
+                    "category": r[4],
+                    "weight": r[5],
+                    "date": r[6],
+                    "teacher": r[7],
+                }
+                for r in rows
+            ]
+
+        # Attendance (non-present only: category != 1)
+        cursor = await self.db.execute(
+            "SELECT s.name, a.subject, a.date, a.lesson_number, a.category, a.teacher "
+            "FROM attendance a JOIN students s ON a.student_key = s.key "
+            "WHERE a.first_seen >= datetime('now', ?) AND a.category != 1 "
+            "ORDER BY a.first_seen DESC",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        if rows:
+            result["attendance"] = [
+                {
+                    "student": r[0],
+                    "subject": r[1],
+                    "date": r[2],
+                    "lesson_number": r[3],
+                    "category": r[4],
+                    "teacher": r[5],
+                }
+                for r in rows
+            ]
+
+        # Exams
+        cursor = await self.db.execute(
+            "SELECT s.name, e.subject, e.date, e.type "
+            "FROM exams e JOIN students s ON e.student_key = s.key "
+            "WHERE e.first_seen >= datetime('now', ?) "
+            "ORDER BY e.first_seen DESC",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        if rows:
+            result["exams"] = [
+                {"student": r[0], "subject": r[1], "date": r[2], "type": r[3]}
+                for r in rows
+            ]
+
+        # Homework
+        cursor = await self.db.execute(
+            "SELECT s.name, h.subject, h.date "
+            "FROM homework h JOIN students s ON h.student_key = s.key "
+            "WHERE h.first_seen >= datetime('now', ?) "
+            "ORDER BY h.first_seen DESC",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        if rows:
+            result["homework"] = [
+                {"student": r[0], "subject": r[1], "date": r[2]} for r in rows
+            ]
+
+        return result
+
     # ── Sync state ───────────────────────────────────────────────────
 
     async def get_state(self, key: str) -> str | None:

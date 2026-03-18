@@ -16,7 +16,7 @@ from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
 from vulcan_notify.display import BOLD, RESET, format_full_sync
-from vulcan_notify.summarizer import summarize
+from vulcan_notify.summarizer import format_changes_for_llm, summarize
 from vulcan_notify.sync import sync_all
 
 
@@ -94,11 +94,6 @@ async def cmd_sync() -> None:
         output = format_full_sync(result, settings.message_sender_whitelist)
         print(output)
 
-        summary = await summarize(output, settings)
-        if summary:
-            print(f"\n{BOLD}AI Summary{RESET}")
-            print(summary)
-
     except SessionExpiredError:
         # Try auto-reauth once if it fails mid-sync
         creds = _get_credentials()
@@ -110,10 +105,6 @@ async def cmd_sync() -> None:
             result = await sync_all(client, db)
             output = format_full_sync(result, settings.message_sender_whitelist)
             print(output)
-            summary = await summarize(output, settings)
-            if summary:
-                print(f"\n{BOLD}AI Summary{RESET}")
-                print(summary)
         else:
             print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
             print(
@@ -126,8 +117,8 @@ async def cmd_sync() -> None:
         await db.close()
 
 
-async def cmd_summarize(days: int = 7) -> None:
-    """Summarize stored messages using AI."""
+async def cmd_summarize(summary_type: str = "sync", days: int = 7) -> None:
+    """Summarize stored data using AI."""
     if not settings.llm_api_key:
         print("LLM_API_KEY not set. Configure it in .env to use AI summaries.")
         sys.exit(1)
@@ -136,33 +127,57 @@ async def cmd_summarize(days: int = 7) -> None:
     await db.connect()
 
     try:
-        messages = await db.get_recent_messages(days=days)
-        if not messages:
-            print(f"No messages in the last {days} days. Try a larger range with --days.")
-            sys.exit(1)
-
-        # Format messages as plain text for the LLM
-        lines: list[str] = []
-        for msg in messages:
-            lines.append(f"From: {msg['sender']}")
-            lines.append(f"Subject: {msg['subject']}")
-            lines.append(f"Date: {msg['date']}")
-            if msg["mailbox"]:
-                lines.append(f"Mailbox: {msg['mailbox']}")
-            if msg["content"]:
-                lines.append(f"Content: {msg['content']}")
-            lines.append("")
-
-        text = "\n".join(lines)
-        summary = await summarize(text, settings, profile="messages")
-        if summary:
-            print(f"{BOLD}Messages Summary (last {days} days, {len(messages)} messages){RESET}")
-            print(summary)
+        if summary_type == "messages":
+            await _summarize_messages(db, days)
         else:
-            print("Failed to generate summary.")
-            sys.exit(1)
+            await _summarize_changes(db, days)
     finally:
         await db.close()
+
+
+async def _summarize_changes(db: Database, days: int) -> None:
+    """Summarize recent sync changes from the database."""
+    changes = await db.get_recent_changes(days=days)
+    if not changes:
+        print(f"No changes in the last {days} day(s). Try a larger range with --days.")
+        sys.exit(1)
+
+    text = format_changes_for_llm(changes)
+    summary = await summarize(text, settings, profile="default")
+    if summary:
+        print(f"{BOLD}Sync Summary (last {days} day(s)){RESET}")
+        print(summary)
+    else:
+        print("Failed to generate summary.")
+        sys.exit(1)
+
+
+async def _summarize_messages(db: Database, days: int) -> None:
+    """Summarize recent messages from the database."""
+    messages = await db.get_recent_messages(days=days)
+    if not messages:
+        print(f"No messages in the last {days} days. Try a larger range with --days.")
+        sys.exit(1)
+
+    lines: list[str] = []
+    for msg in messages:
+        lines.append(f"From: {msg['sender']}")
+        lines.append(f"Subject: {msg['subject']}")
+        lines.append(f"Date: {msg['date']}")
+        if msg["mailbox"]:
+            lines.append(f"Mailbox: {msg['mailbox']}")
+        if msg["content"]:
+            lines.append(f"Content: {msg['content']}")
+        lines.append("")
+
+    text = "\n".join(lines)
+    summary = await summarize(text, settings, profile="messages")
+    if summary:
+        print(f"{BOLD}Messages Summary (last {days} days, {len(messages)} messages){RESET}")
+        print(summary)
+    else:
+        print("Failed to generate summary.")
+        sys.exit(1)
 
 
 def main() -> None:
@@ -178,17 +193,26 @@ def main() -> None:
         case "sync":
             asyncio.run(cmd_sync())
         case "summarize":
+            summary_type = "sync"
             days = 7
-            for i, arg in enumerate(sys.argv[2:], start=2):
-                if arg == "--days" and i + 1 < len(sys.argv):
-                    days = int(sys.argv[i + 1])
-            asyncio.run(cmd_summarize(days=days))
+            args = sys.argv[2:]
+            for i, arg in enumerate(args):
+                if arg == "--type" and i + 1 < len(args):
+                    summary_type = args[i + 1]
+                elif arg == "--days" and i + 1 < len(args):
+                    days = int(args[i + 1])
+            if summary_type not in ("sync", "messages"):
+                print("Invalid --type. Use 'sync' or 'messages'.")
+                sys.exit(1)
+            asyncio.run(cmd_summarize(summary_type=summary_type, days=days))
         case _:
             print("Usage: vulcan-notify [auth|test|sync|summarize]")
             print("  auth      - Interactive login and save session")
             print("  test      - Test if saved session is valid")
             print("  sync      - Fetch latest data and show changes (default)")
-            print("  summarize - AI summary of stored messages")
+            print("  summarize - AI summary of recent changes or messages")
+            print("    --type sync|messages  (default: sync)")
+            print("    --days N              (default: 7)")
             sys.exit(1)
 
 

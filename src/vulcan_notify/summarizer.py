@@ -61,6 +61,61 @@ async def summarize(
         return None
 
 
+_ATTENDANCE_CATEGORIES = {
+    2: "Absent",
+    3: "Late",
+    4: "Excused absence",
+    5: "Excused lateness",
+    6: "Exempt",
+}
+
+_EXAM_TYPES = {
+    0: "Test",
+    1: "Quiz",
+    2: "Oral exam",
+}
+
+
+def format_changes_for_llm(changes: dict[str, list[dict[str, object]]]) -> str:
+    """Format structured DB change records into plain text for the LLM."""
+    lines: list[str] = []
+
+    if "grades" in changes:
+        lines.append("Grades:")
+        for g in changes["grades"]:
+            lines.append(
+                f"  {g['student']} - {g['subject']}: {g['value']} "
+                f"({g['column_name']}, weight {g['weight']}, {g['date']})"
+            )
+        lines.append("")
+
+    if "attendance" in changes:
+        lines.append("Attendance:")
+        for a in changes["attendance"]:
+            cat_id = int(str(a["category"]))
+            category = _ATTENDANCE_CATEGORIES.get(cat_id, f"Category {cat_id}")
+            lines.append(
+                f"  {a['student']} - {a['subject']}: {category} "
+                f"(lesson {a['lesson_number']}, {a['date']})"
+            )
+        lines.append("")
+
+    if "exams" in changes:
+        lines.append("Upcoming exams:")
+        for e in changes["exams"]:
+            exam_type = _EXAM_TYPES.get(int(str(e["type"])), f"Type {e['type']}")
+            lines.append(f"  {e['student']} - {e['subject']}: {exam_type} on {e['date']}")
+        lines.append("")
+
+    if "homework" in changes:
+        lines.append("Homework:")
+        for h in changes["homework"]:
+            lines.append(f"  {h['student']} - {h['subject']}: due {h['date']}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _load_prompts(
     settings: Settings,
     profile: str,
