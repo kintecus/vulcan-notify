@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS exams (
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP,
+    calendar_uid TEXT,
     FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS homework (
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP,
+    calendar_uid TEXT,
     FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
@@ -171,6 +173,7 @@ class Database:
                 ("teacher", "TEXT"),
                 ("last_seen", "TIMESTAMP"),
                 ("deleted_at", "TIMESTAMP"),
+                ("calendar_uid", "TEXT"),
             ]:
                 if col not in columns:
                     logger.info("Migrating: adding %s column to exams", col)
@@ -188,6 +191,7 @@ class Database:
                 ("teacher", "TEXT"),
                 ("last_seen", "TIMESTAMP"),
                 ("deleted_at", "TIMESTAMP"),
+                ("calendar_uid", "TEXT"),
             ]:
                 if col not in columns:
                     logger.info("Migrating: adding %s column to homework", col)
@@ -567,6 +571,84 @@ class Database:
             (student_key, *current_ids),
         )
         return cursor.rowcount
+
+    # ── Calendar sync ────────────────────────────────────────────────
+
+    async def set_calendar_uid(self, table: str, item_id: int, uid: str) -> None:
+        if table not in ("exams", "homework"):
+            raise ValueError(f"Calendar UID not supported for table: {table}")
+        await self.db.execute(
+            f"UPDATE {table} SET calendar_uid = ? WHERE id = ?",
+            (uid, item_id),
+        )
+
+    async def clear_calendar_uid(self, table: str, item_id: int) -> None:
+        if table not in ("exams", "homework"):
+            raise ValueError(f"Calendar UID not supported for table: {table}")
+        await self.db.execute(
+            f"UPDATE {table} SET calendar_uid = NULL WHERE id = ?",
+            (item_id,),
+        )
+
+    async def get_items_for_calendar(
+        self, student_key: str
+    ) -> dict[str, list[dict[str, object]]]:
+        """Return active exams and homework for calendar sync."""
+        result: dict[str, list[dict[str, object]]] = {}
+
+        cursor = await self.db.execute(
+            "SELECT id, date, subject, type, description, teacher, calendar_uid "
+            "FROM exams WHERE student_key = ? AND deleted_at IS NULL",
+            (student_key,),
+        )
+        result["exams"] = [
+            {
+                "id": r[0], "date": r[1], "subject": r[2], "type": r[3],
+                "description": r[4], "teacher": r[5], "calendar_uid": r[6],
+            }
+            for r in await cursor.fetchall()
+        ]
+
+        cursor = await self.db.execute(
+            "SELECT id, date, subject, content, teacher, calendar_uid "
+            "FROM homework WHERE student_key = ? AND deleted_at IS NULL",
+            (student_key,),
+        )
+        result["homework"] = [
+            {
+                "id": r[0], "date": r[1], "subject": r[2],
+                "content": r[3], "teacher": r[4], "calendar_uid": r[5],
+            }
+            for r in await cursor.fetchall()
+        ]
+
+        return result
+
+    async def get_deleted_items_with_calendar_uid(
+        self, student_key: str
+    ) -> dict[str, list[dict[str, object]]]:
+        """Return soft-deleted items that still have calendar events."""
+        result: dict[str, list[dict[str, object]]] = {}
+
+        for table in ("exams", "homework"):
+            cursor = await self.db.execute(
+                f"SELECT id, calendar_uid FROM {table} "
+                "WHERE student_key = ? AND deleted_at IS NOT NULL "
+                "AND calendar_uid IS NOT NULL",
+                (student_key,),
+            )
+            result[table] = [
+                {"id": r[0], "calendar_uid": r[1]}
+                for r in await cursor.fetchall()
+            ]
+
+        return result
+
+    async def clear_all_calendar_uids(self) -> None:
+        """Clear all calendar UIDs (used by force re-sync)."""
+        for table in ("exams", "homework"):
+            await self.db.execute(f"UPDATE {table} SET calendar_uid = NULL")
+        await self.commit()
 
     # ── Sync state ───────────────────────────────────────────────────
 

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     llm_model: str = "qwen-3-235b-a22b-instruct-2507"
     prompts_file: Path = Path("prompts.toml")
 
+    # Calendar (macOS Calendar via AppleScript, empty map = disabled)
+    calendar_map: dict[str, str] = {}  # student name -> calendar name
+    calendar_reminder_hours: int = 24  # alarm trigger (hours before event)
+
     # Logging
     log_level: str = "INFO"
 
