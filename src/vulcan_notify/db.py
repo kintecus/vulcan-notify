@@ -347,6 +347,13 @@ class Database:
         )
         return {row[0] for row in await cursor.fetchall()}
 
+    async def get_exams_missing_detail(self, student_key: str) -> set[int]:
+        cursor = await self.db.execute(
+            "SELECT id FROM exams WHERE student_key = ? AND description IS NULL",
+            (student_key,),
+        )
+        return {row[0] for row in await cursor.fetchall()}
+
     # ── Homework ─────────────────────────────────────────────────────
 
     async def upsert_homework(self, student_key: str, hw: Homework) -> None:
@@ -372,6 +379,13 @@ class Database:
     async def get_homework_ids_for_student(self, student_key: str) -> set[int]:
         cursor = await self.db.execute(
             "SELECT id FROM homework WHERE student_key = ?",
+            (student_key,),
+        )
+        return {row[0] for row in await cursor.fetchall()}
+
+    async def get_homework_missing_detail(self, student_key: str) -> set[int]:
+        cursor = await self.db.execute(
+            "SELECT id FROM homework WHERE student_key = ? AND content IS NULL",
             (student_key,),
         )
         return {row[0] for row in await cursor.fetchall()}
