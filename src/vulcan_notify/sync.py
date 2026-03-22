@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from vulcan_notify.config import settings
 from vulcan_notify.differ import Change, diff_attendance, diff_exams, diff_grades, diff_homework
 
 if TYPE_CHECKING:
@@ -64,12 +65,11 @@ async def sync_student(
     # ── Grades ───────────────────────────────────────────────────
     try:
         periods = await client.get_periods(student)
-        if periods:
-            current_period = max(periods, key=lambda p: p.number)
-            grades = await client.get_grades(student, current_period)
+        for period in periods:
+            grades = await client.get_grades(student, period)
 
             if not is_first:
-                result.new_grades = await diff_grades(student, grades, db)
+                result.new_grades.extend(await diff_grades(student, grades, db))
 
             for grade in grades:
                 await db.upsert_grade(student.key, grade)
@@ -79,10 +79,10 @@ async def sync_student(
     # ── Attendance ───────────────────────────────────────────────
     try:
         now = datetime.now()
-        monday = now - timedelta(days=now.weekday())
-        sunday = monday + timedelta(days=6)
-        date_from = monday.strftime("%Y-%m-%dT00:00:00.000Z")
-        date_to = sunday.strftime("%Y-%m-%dT23:59:59.999Z")
+        date_from = (now - timedelta(days=settings.sync_attendance_days)).strftime(
+            "%Y-%m-%dT00:00:00.000Z"
+        )
+        date_to = now.strftime("%Y-%m-%dT23:59:59.999Z")
 
         attendance = await client.get_attendance(student, date_from, date_to)
 
@@ -97,32 +97,80 @@ async def sync_student(
     # ── Exams ────────────────────────────────────────────────────
     try:
         exams = await client.get_exams(student)
+        stored_exam_ids = await db.get_exam_ids_for_student(student.key)
 
         if not is_first:
             result.new_exams = await diff_exams(student, exams, db)
 
         for exam in exams:
             await db.upsert_exam(student.key, exam)
+
+        # Fetch detail for new exams
+        for exam in exams:
+            if exam.id not in stored_exam_ids:
+                try:
+                    detail = await client.get_exam_detail(exam.id)
+                    if detail and isinstance(detail, dict):
+                        description = detail.get("opis") or detail.get("tresc")
+                        teacher = detail.get("nauczyciel")
+                        if description:
+                            await db.update_exam_description(
+                                exam.id, str(description), str(teacher) if teacher else None
+                            )
+                except Exception:
+                    logger.debug("Failed to fetch exam detail for %d", exam.id)
+
+        # Mark exams no longer returned by API as soft-deleted
+        if not is_first:
+            deleted = await db.mark_missing(student.key, "exams", {e.id for e in exams})
+            if deleted:
+                logger.info("Soft-deleted %d exams for %s", deleted, student.name)
     except Exception:
         logger.exception("Failed to sync exams for %s", student.name)
 
     # ── Homework ─────────────────────────────────────────────────
     try:
         homework = await client.get_homework(student)
+        stored_hw_ids = await db.get_homework_ids_for_student(student.key)
 
         if not is_first:
             result.new_homework = await diff_homework(student, homework, db)
 
         for hw in homework:
             await db.upsert_homework(student.key, hw)
+
+        # Fetch detail for new homework
+        for hw in homework:
+            if hw.id not in stored_hw_ids:
+                try:
+                    detail = await client.get_homework_detail(hw.id)
+                    if detail and isinstance(detail, dict):
+                        content = detail.get("tresc") or detail.get("opis")
+                        teacher = detail.get("nauczyciel")
+                        if content:
+                            await db.update_homework_content(
+                                hw.id, str(content), str(teacher) if teacher else None
+                            )
+                except Exception:
+                    logger.debug("Failed to fetch homework detail for %d", hw.id)
+
+        # Mark homework no longer returned by API as soft-deleted
+        if not is_first:
+            deleted = await db.mark_missing(student.key, "homework", {h.id for h in homework})
+            if deleted:
+                logger.info("Soft-deleted %d homework for %s", deleted, student.name)
     except Exception:
         logger.exception("Failed to sync homework for %s", student.name)
+
+    # Commit all entity upserts in one transaction
+    await db.commit()
 
     # Mark sync complete
     await db.set_state(
         f"last_sync:{student.key}",
         datetime.now().isoformat(),
     )
+    await db.commit()
 
     return result
 
@@ -150,6 +198,8 @@ async def sync_messages(
             new_messages.append(msg)
         await db.upsert_message(msg)
 
+    await db.commit()
+
     # Fetch content for new messages
     for msg in new_messages:
         try:
@@ -161,6 +211,7 @@ async def sync_messages(
             logger.exception("Failed to fetch message detail for %d", msg.id)
 
     await db.set_state("last_sync:messages", datetime.now().isoformat())
+    await db.commit()
 
     return new_messages, is_first
 
@@ -170,23 +221,40 @@ async def sync_all(
     db: Database,
 ) -> FullSyncResult:
     """Sync all students and messages. Returns combined result."""
-    students = await client.get_students()
-    if not students:
-        logger.warning("No students found in account")
-        return FullSyncResult(student_results=[])
+    run_id = await db.create_sync_run()
+    errors = 0
+    items = 0
 
-    student_results: list[SyncResult] = []
-    for student in students:
-        logger.info("Syncing %s (%s)...", student.name, student.class_name)
-        result = await sync_student(client, db, student)
-        student_results.append(result)
+    try:
+        students = await client.get_students()
+        if not students:
+            logger.warning("No students found in account")
+            await db.complete_sync_run(run_id, "completed", 0, 0, 0)
+            return FullSyncResult(student_results=[])
 
-    # Sync messages (unified inbox, once for all students)
-    logger.info("Syncing messages...")
-    new_messages, is_first_msg = await sync_messages(client, db)
+        student_results: list[SyncResult] = []
+        for student in students:
+            logger.info("Syncing %s (%s)...", student.name, student.class_name)
+            result = await sync_student(client, db, student)
+            student_results.append(result)
+            items += len(result.all_changes)
 
-    return FullSyncResult(
-        student_results=student_results,
-        new_messages=new_messages,
-        is_first_message_sync=is_first_msg,
-    )
+        # Sync messages (unified inbox, once for all students)
+        logger.info("Syncing messages...")
+        new_messages, is_first_msg = await sync_messages(client, db)
+        items += len(new_messages)
+
+        await db.complete_sync_run(
+            run_id, "completed", len(students), items, errors
+        )
+
+        return FullSyncResult(
+            student_results=student_results,
+            new_messages=new_messages,
+            is_first_message_sync=is_first_msg,
+        )
+    except Exception as exc:
+        await db.complete_sync_run(
+            run_id, "failed", 0, items, errors + 1, str(exc)
+        )
+        raise

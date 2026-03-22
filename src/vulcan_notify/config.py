@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     ntfy_topic: str = "vulcan-notify"
     ntfy_server: str = "https://ntfy.sh"
 
+    # Sync
+    sync_attendance_days: int = 90  # how far back to sync attendance
+
     # Polling
     poll_interval: int = 300  # seconds
 
