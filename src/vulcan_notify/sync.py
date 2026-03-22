@@ -105,9 +105,10 @@ async def sync_student(
         for exam in exams:
             await db.upsert_exam(student.key, exam)
 
-        # Fetch detail for new exams
+        # Fetch detail for new exams or exams missing description
+        missing_detail = await db.get_exams_missing_detail(student.key)
         for exam in exams:
-            if exam.id not in stored_exam_ids:
+            if exam.id not in stored_exam_ids or exam.id in missing_detail:
                 try:
                     detail = await client.get_exam_detail(student, exam.id)
                     if detail:
@@ -139,9 +140,10 @@ async def sync_student(
         for hw in homework:
             await db.upsert_homework(student.key, hw)
 
-        # Fetch detail for new homework
+        # Fetch detail for new homework or homework missing content
+        missing_detail = await db.get_homework_missing_detail(student.key)
         for hw in homework:
-            if hw.id not in stored_hw_ids:
+            if hw.id not in stored_hw_ids or hw.id in missing_detail:
                 try:
                     detail = await client.get_homework_detail(student, hw.id)
                     if detail:
