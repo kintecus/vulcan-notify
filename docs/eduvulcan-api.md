@@ -167,6 +167,21 @@ Upcoming exams/tests.
 
 `rodzaj`: 1 = test (sprawdzian), 2 = quiz (kartkowka) - needs verification.
 
+### GET /api/SprawdzianSzczegoly?key={key}&id={examId}
+
+Exam detail. Returns description and teacher.
+
+```json
+{
+  "typ": 2,
+  "data": "2026-03-23T00:00:00+01:00",
+  "przedmiotNazwa": "Język polski",
+  "nauczycielImieNazwisko": "Agnieszka Kochanowska-Sabljak",
+  "opis": "Test ze znajomości lektury \"Mikołajek\".",
+  "id": 43431
+}
+```
+
 ### GET /api/ZadaniaDomoweTablica?key={key}
 
 Upcoming homework.
@@ -176,6 +191,39 @@ Upcoming homework.
   {"id": 10002, "data": "2026-03-16T...", "przedmiot": "Plastyka"}
 ]
 ```
+
+### GET /api/ZadanieDomoweSzczegoly?key={key}&id={homeworkId}
+
+Homework detail. Returns description, teacher, attachments, and student response status.
+
+```json
+{
+  "typ": 4,
+  "data": "2026-03-16T00:00:00+01:00",
+  "terminOdpowiedzi": "2026-03-16T00:00:00+01:00",
+  "przedmiotNazwa": "Plastyka",
+  "nauczycielImieNazwisko": "Paulina Studnicka",
+  "opis": "Na plastykę proszę przynieść blok rysunkowy...",
+  "zalaczniki": [],
+  "linki": [],
+  "status": 0,
+  "odpowiedzWymagana": false,
+  "zadanieModulDydaktyczny": false,
+  "odpowiedz": {
+    "id": 642123,
+    "status": 1,
+    "odpowiedz": null,
+    "komentarzNauczyciela": null,
+    "zalaczniki": [],
+    "data": null
+  },
+  "id": 36511
+}
+```
+
+### GET /api/SprawdzianyZadaniaDomowe?key={key}
+
+Calendar view combining both exams and homework. Used by the "Sprawdziany i zadania domowe" page.
 
 ### GET /api/WiadomosciNieodczytane
 

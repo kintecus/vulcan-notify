@@ -109,10 +109,10 @@ async def sync_student(
         for exam in exams:
             if exam.id not in stored_exam_ids:
                 try:
-                    detail = await client.get_exam_detail(exam.id)
-                    if detail and isinstance(detail, dict):
-                        description = detail.get("opis") or detail.get("tresc")
-                        teacher = detail.get("nauczyciel")
+                    detail = await client.get_exam_detail(student, exam.id)
+                    if detail:
+                        description = detail.get("opis", "")
+                        teacher = detail.get("nauczycielImieNazwisko", "")
                         if description:
                             await db.update_exam_description(
                                 exam.id, str(description), str(teacher) if teacher else None
@@ -143,10 +143,10 @@ async def sync_student(
         for hw in homework:
             if hw.id not in stored_hw_ids:
                 try:
-                    detail = await client.get_homework_detail(hw.id)
-                    if detail and isinstance(detail, dict):
-                        content = detail.get("tresc") or detail.get("opis")
-                        teacher = detail.get("nauczyciel")
+                    detail = await client.get_homework_detail(student, hw.id)
+                    if detail:
+                        content = detail.get("opis", "")
+                        teacher = detail.get("nauczycielImieNazwisko", "")
                         if content:
                             await db.update_homework_content(
                                 hw.id, str(content), str(teacher) if teacher else None
