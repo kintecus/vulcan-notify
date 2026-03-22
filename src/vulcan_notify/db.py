@@ -68,7 +68,11 @@ CREATE TABLE IF NOT EXISTS exams (
     date TEXT NOT NULL,
     subject TEXT NOT NULL,
     type INTEGER NOT NULL,
+    description TEXT,
+    teacher TEXT,
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
     FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
@@ -77,7 +81,11 @@ CREATE TABLE IF NOT EXISTS homework (
     student_key TEXT NOT NULL,
     date TEXT NOT NULL,
     subject TEXT NOT NULL,
+    content TEXT,
+    teacher TEXT,
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
     FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
@@ -99,6 +107,17 @@ CREATE TABLE IF NOT EXISTS sync_state (
     value TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS sync_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    status TEXT NOT NULL DEFAULT 'running',
+    students_synced INTEGER DEFAULT 0,
+    items_processed INTEGER DEFAULT 0,
+    errors_count INTEGER DEFAULT 0,
+    error_detail TEXT
+);
 """
 
 
@@ -118,6 +137,10 @@ class Database:
         if self._db:
             await self._db.close()
 
+    async def commit(self) -> None:
+        """Commit the current transaction."""
+        await self.db.commit()
+
     @property
     def db(self) -> aiosqlite.Connection:
         if self._db is None:
@@ -135,6 +158,40 @@ class Database:
             if await cursor.fetchone():
                 logger.info("Migrating: dropping legacy %s table", table)
                 await self.db.execute(f"DROP TABLE {table}")
+
+        # Migrate exams table (add new columns)
+        cursor = await self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='exams'"
+        )
+        if await cursor.fetchone():
+            col_cursor = await self.db.execute("PRAGMA table_info(exams)")
+            columns = {row[1] for row in await col_cursor.fetchall()}
+            for col, col_type in [
+                ("description", "TEXT"),
+                ("teacher", "TEXT"),
+                ("last_seen", "TIMESTAMP"),
+                ("deleted_at", "TIMESTAMP"),
+            ]:
+                if col not in columns:
+                    logger.info("Migrating: adding %s column to exams", col)
+                    await self.db.execute(f"ALTER TABLE exams ADD COLUMN {col} {col_type}")
+
+        # Migrate homework table (add new columns)
+        cursor = await self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='homework'"
+        )
+        if await cursor.fetchone():
+            col_cursor = await self.db.execute("PRAGMA table_info(homework)")
+            columns = {row[1] for row in await col_cursor.fetchall()}
+            for col, col_type in [
+                ("content", "TEXT"),
+                ("teacher", "TEXT"),
+                ("last_seen", "TIMESTAMP"),
+                ("deleted_at", "TIMESTAMP"),
+            ]:
+                if col not in columns:
+                    logger.info("Migrating: adding %s column to homework", col)
+                    await self.db.execute(f"ALTER TABLE homework ADD COLUMN {col} {col_type}")
 
         # Migrate old messages table (missing api_global_key column)
         cursor = await self.db.execute(
@@ -168,7 +225,6 @@ class Database:
                 student.mailbox_key,
             ),
         )
-        await self.db.commit()
 
     # ── Grades ───────────────────────────────────────────────────────
 
@@ -194,7 +250,6 @@ class Database:
                 grade.teacher,
             ),
         )
-        await self.db.commit()
 
     async def get_grades_for_student(self, student_key: str) -> list[dict[str, object]]:
         cursor = await self.db.execute(
@@ -239,7 +294,6 @@ class Database:
                 entry.time_to,
             ),
         )
-        await self.db.commit()
 
     async def get_attendance_for_student(self, student_key: str) -> list[dict[str, object]]:
         cursor = await self.db.execute(
@@ -265,13 +319,26 @@ class Database:
 
     async def upsert_exam(self, student_key: str, exam: Exam) -> None:
         await self.db.execute(
-            "INSERT INTO exams (id, student_key, date, subject, type) "
-            "VALUES (?, ?, ?, ?, ?) "
+            "INSERT INTO exams (id, student_key, date, subject, type, description, teacher) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET "
-            "date=excluded.date, subject=excluded.subject, type=excluded.type",
-            (exam.id, student_key, exam.date, exam.subject, exam.type),
+            "date=excluded.date, subject=excluded.subject, type=excluded.type, "
+            "description=COALESCE(excluded.description, exams.description), "
+            "teacher=COALESCE(excluded.teacher, exams.teacher), "
+            "last_seen=CURRENT_TIMESTAMP, deleted_at=NULL",
+            (
+                exam.id, student_key, exam.date, exam.subject,
+                exam.type, exam.description, exam.teacher,
+            ),
         )
-        await self.db.commit()
+
+    async def update_exam_description(
+        self, exam_id: int, description: str, teacher: str | None = None
+    ) -> None:
+        await self.db.execute(
+            "UPDATE exams SET description = ?, teacher = COALESCE(?, teacher) WHERE id = ?",
+            (description, teacher, exam_id),
+        )
 
     async def get_exam_ids_for_student(self, student_key: str) -> set[int]:
         cursor = await self.db.execute(
@@ -284,13 +351,23 @@ class Database:
 
     async def upsert_homework(self, student_key: str, hw: Homework) -> None:
         await self.db.execute(
-            "INSERT INTO homework (id, student_key, date, subject) "
-            "VALUES (?, ?, ?, ?) "
+            "INSERT INTO homework (id, student_key, date, subject, content, teacher) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET "
-            "date=excluded.date, subject=excluded.subject",
-            (hw.id, student_key, hw.date, hw.subject),
+            "date=excluded.date, subject=excluded.subject, "
+            "content=COALESCE(excluded.content, homework.content), "
+            "teacher=COALESCE(excluded.teacher, homework.teacher), "
+            "last_seen=CURRENT_TIMESTAMP, deleted_at=NULL",
+            (hw.id, student_key, hw.date, hw.subject, hw.content, hw.teacher),
         )
-        await self.db.commit()
+
+    async def update_homework_content(
+        self, homework_id: int, content: str, teacher: str | None = None
+    ) -> None:
+        await self.db.execute(
+            "UPDATE homework SET content = ?, teacher = COALESCE(?, teacher) WHERE id = ?",
+            (content, teacher, homework_id),
+        )
 
     async def get_homework_ids_for_student(self, student_key: str) -> set[int]:
         cursor = await self.db.execute(
@@ -320,7 +397,6 @@ class Database:
                 msg.content,
             ),
         )
-        await self.db.commit()
 
     async def get_recent_messages(self, days: int = 7) -> list[dict[str, object]]:
         cursor = await self.db.execute(
@@ -370,7 +446,6 @@ class Database:
             "UPDATE messages SET content = ? WHERE id = ?",
             (content, message_id),
         )
-        await self.db.commit()
 
     # ── Recent changes (for AI summarization) ───────────────────────
 
@@ -461,6 +536,24 @@ class Database:
 
         return result
 
+    # ── Soft deletes ─────────────────────────────────────────────────
+
+    async def mark_missing(
+        self, student_key: str, table: str, current_ids: set[int]
+    ) -> int:
+        """Mark items not in current_ids as soft-deleted. Returns count."""
+        if table not in ("exams", "homework"):
+            raise ValueError(f"Soft deletes not supported for table: {table}")
+        if not current_ids:
+            return 0
+        placeholders = ",".join("?" for _ in current_ids)
+        cursor = await self.db.execute(
+            f"UPDATE {table} SET deleted_at = CURRENT_TIMESTAMP "
+            f"WHERE student_key = ? AND deleted_at IS NULL AND id NOT IN ({placeholders})",
+            (student_key, *current_ids),
+        )
+        return cursor.rowcount
+
     # ── Sync state ───────────────────────────────────────────────────
 
     async def get_state(self, key: str) -> str | None:
@@ -474,4 +567,49 @@ class Database:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
             (key, value),
         )
-        await self.db.commit()
+
+    # ── Sync runs ─────────────────────────────────────────────────
+
+    async def create_sync_run(self) -> int:
+        cursor = await self.db.execute(
+            "INSERT INTO sync_runs (started_at, status) VALUES (CURRENT_TIMESTAMP, 'running')"
+        )
+        await self.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+    async def complete_sync_run(
+        self,
+        run_id: int,
+        status: str,
+        students_synced: int = 0,
+        items_processed: int = 0,
+        errors_count: int = 0,
+        error_detail: str | None = None,
+    ) -> None:
+        await self.db.execute(
+            "UPDATE sync_runs SET completed_at = CURRENT_TIMESTAMP, status = ?, "
+            "students_synced = ?, items_processed = ?, errors_count = ?, error_detail = ? "
+            "WHERE id = ?",
+            (status, students_synced, items_processed, errors_count, error_detail, run_id),
+        )
+        await self.commit()
+
+    async def get_last_sync_run(self) -> dict[str, object] | None:
+        cursor = await self.db.execute(
+            "SELECT id, started_at, completed_at, status, students_synced, "
+            "items_processed, errors_count, error_detail "
+            "FROM sync_runs ORDER BY id DESC LIMIT 1"
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "started_at": row[1],
+            "completed_at": row[2],
+            "status": row[3],
+            "students_synced": row[4],
+            "items_processed": row[5],
+            "errors_count": row[6],
+            "error_detail": row[7],
+        }

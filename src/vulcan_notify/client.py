@@ -241,6 +241,9 @@ class VulcanClient:
         data = await self._request(f"/api/SprawdzianyTablica?key={student.key}")
         if not data:
             return []
+        if data and isinstance(data, list) and len(data) > 0:
+            logger.debug("Exam raw fields: %s", sorted(data[0].keys()))
+            logger.debug("Exam sample: %s", data[0])
         return [
             Exam(
                 id=e["id"],
@@ -255,6 +258,9 @@ class VulcanClient:
         data = await self._request(f"/api/ZadaniaDomoweTablica?key={student.key}")
         if not data:
             return []
+        if data and isinstance(data, list) and len(data) > 0:
+            logger.debug("Homework raw fields: %s", sorted(data[0].keys()))
+            logger.debug("Homework sample: %s", data[0])
         return [
             Homework(
                 id=h["id"],
@@ -263,6 +269,42 @@ class VulcanClient:
             )
             for h in data
         ]
+
+    # ── Detail endpoint probes (API recon) ────────────────────────
+
+    async def get_homework_detail(self, homework_id: int) -> dict[str, Any] | None:
+        """Probe for homework detail endpoint. Returns raw dict or None."""
+        for path in (
+            f"/api/ZadaniaDomoweSzczegoly?id={homework_id}",
+            f"/api/ZadaniaDomowe/{homework_id}",
+        ):
+            try:
+                data = await self._request(path)
+                if data is not None:
+                    keys = sorted(data.keys()) if isinstance(data, dict) else type(data)
+                    logger.debug("Homework detail (%s) fields: %s", path, keys)
+                    logger.debug("Homework detail response: %s", data)
+                    return data if isinstance(data, dict) else None
+            except Exception:
+                logger.debug("Homework detail probe failed for %s", path)
+        return None
+
+    async def get_exam_detail(self, exam_id: int) -> dict[str, Any] | None:
+        """Probe for exam detail endpoint. Returns raw dict or None."""
+        for path in (
+            f"/api/SprawdzianySzczegoly?id={exam_id}",
+            f"/api/Sprawdziany/{exam_id}",
+        ):
+            try:
+                data = await self._request(path)
+                if data is not None:
+                    keys = sorted(data.keys()) if isinstance(data, dict) else type(data)
+                    logger.debug("Exam detail (%s) fields: %s", path, keys)
+                    logger.debug("Exam detail response: %s", data)
+                    return data if isinstance(data, dict) else None
+            except Exception:
+                logger.debug("Exam detail probe failed for %s", path)
+        return None
 
     async def get_dashboard(self, student: Student) -> DashboardData:
         """Fetch all dashboard (Tablica) data concurrently for a student."""
@@ -339,4 +381,5 @@ class VulcanClient:
         )
         if not data:
             return None
-        return data.get("tresc")
+        tresc = data.get("tresc")
+        return str(tresc) if tresc is not None else None

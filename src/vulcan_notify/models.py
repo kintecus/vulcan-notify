@@ -53,6 +53,8 @@ class Exam:
     date: str  # data (ISO 8601)
     subject: str  # przedmiot
     type: int  # rodzaj (1=test?, 2=quiz?)
+    description: str | None = None  # opis (from detail endpoint)
+    teacher: str | None = None  # nauczyciel
 
 
 @dataclass
@@ -60,6 +62,8 @@ class Homework:
     id: int
     date: str  # data (ISO 8601)
     subject: str  # przedmiot
+    content: str | None = None  # tresc (from detail endpoint)
+    teacher: str | None = None  # nauczyciel
 
 
 @dataclass
