@@ -1,6 +1,7 @@
 """Entry point for vulcan-notify service."""
 
 import asyncio
+import contextlib
 import logging
 import sys
 from typing import Any
@@ -12,6 +13,7 @@ from vulcan_notify.auth import (
     login_and_save_session,
     test_session,
 )
+from vulcan_notify.calendar import sync_to_calendar
 from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
@@ -77,6 +79,36 @@ async def _ensure_session() -> dict[str, Any]:
     sys.exit(1)
 
 
+def _print_calendar_result(cal_result: object) -> None:
+    """Print calendar sync summary if anything happened."""
+    from vulcan_notify.calendar import CalendarSyncResult
+
+    if not isinstance(cal_result, CalendarSyncResult):
+        return
+    parts = []
+    if cal_result.created:
+        parts.append(f"{cal_result.created} created")
+    if cal_result.updated:
+        parts.append(f"{cal_result.updated} updated")
+    if cal_result.deleted:
+        parts.append(f"{cal_result.deleted} deleted")
+    if cal_result.errors:
+        parts.append(f"{cal_result.errors} errors")
+    if parts:
+        print(f"\nCalendar: {', '.join(parts)}")
+    if cal_result.skipped_students:
+        for name in cal_result.skipped_students:
+            print(f"  Warning: no calendar mapping for {name}")
+
+
+async def _sync_calendar(db: Database) -> None:
+    """Push exams/homework to macOS Calendar if configured."""
+    if not settings.calendar_map:
+        return
+    cal_result = await sync_to_calendar(db)
+    _print_calendar_result(cal_result)
+
+
 async def cmd_sync() -> None:
     """Fetch latest data and show changes since last sync."""
     session = await _ensure_session()
@@ -93,6 +125,7 @@ async def cmd_sync() -> None:
 
         output = format_full_sync(result, settings.message_sender_whitelist)
         print(output)
+        await _sync_calendar(db)
 
     except SessionExpiredError:
         # Try auto-reauth once if it fails mid-sync
@@ -105,6 +138,7 @@ async def cmd_sync() -> None:
             result = await sync_all(client, db)
             output = format_full_sync(result, settings.message_sender_whitelist)
             print(output)
+            await _sync_calendar(db)
         else:
             print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
             print(
@@ -114,6 +148,46 @@ async def cmd_sync() -> None:
             sys.exit(1)
     finally:
         await client.close()
+        await db.close()
+
+
+async def cmd_calendar() -> None:
+    """Force re-sync all active exams/homework to macOS Calendar."""
+    if not settings.calendar_map:
+        print("CALENDAR_MAP not configured. Set it in .env, e.g.:")
+        print('  CALENDAR_MAP={"Yarema Senyuk": "School Yarema"}')
+        sys.exit(1)
+
+    db = Database(settings.db_path)
+    await db.connect()
+
+    try:
+        # Clear all existing calendar events and UIDs
+        print("Clearing existing calendar events...")
+        # Delete events that have UIDs
+        students_cursor = await db.db.execute("SELECT key, name FROM students")
+        students = {row[0]: row[1] for row in await students_cursor.fetchall()}
+
+        from vulcan_notify.calendar import _delete_event
+
+        for student_key, student_name in students.items():
+            calendar_name = settings.calendar_map.get(student_name)
+            if not calendar_name:
+                continue
+            items = await db.get_items_for_calendar(student_key)
+            for table in ("exams", "homework"):
+                for item in items[table]:
+                    if item["calendar_uid"]:
+                        with contextlib.suppress(Exception):
+                            await _delete_event(calendar_name, str(item["calendar_uid"]))
+
+        await db.clear_all_calendar_uids()
+
+        # Re-create all events
+        print("Creating calendar events...")
+        cal_result = await sync_to_calendar(db)
+        _print_calendar_result(cal_result)
+    finally:
         await db.close()
 
 
@@ -192,6 +266,8 @@ def main() -> None:
             asyncio.run(cmd_test())
         case "sync":
             asyncio.run(cmd_sync())
+        case "calendar":
+            asyncio.run(cmd_calendar())
         case "summarize":
             summary_type = "sync"
             days = 7
@@ -206,10 +282,11 @@ def main() -> None:
                 sys.exit(1)
             asyncio.run(cmd_summarize(summary_type=summary_type, days=days))
         case _:
-            print("Usage: vulcan-notify [auth|test|sync|summarize]")
+            print("Usage: vulcan-notify [auth|test|sync|calendar|summarize]")
             print("  auth      - Interactive login and save session")
             print("  test      - Test if saved session is valid")
             print("  sync      - Fetch latest data and show changes (default)")
+            print("  calendar  - Force re-sync all events to macOS Calendar")
             print("  summarize - AI summary of recent changes or messages")
             print("    --type sync|messages  (default: sync)")
             print("    --days N              (default: 7)")
