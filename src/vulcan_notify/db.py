@@ -230,6 +230,16 @@ class Database:
             ),
         )
 
+    async def get_all_students(self) -> list[dict[str, object]]:
+        cursor = await self.db.execute(
+            "SELECT key, name, class_name, school FROM students ORDER BY name"
+        )
+        rows = await cursor.fetchall()
+        return [
+            {"key": r[0], "name": r[1], "class_name": r[2], "school": r[3]}
+            for r in rows
+        ]
+
     # ── Grades ───────────────────────────────────────────────────────
 
     async def upsert_grade(self, student_key: str, grade: Grade) -> None:
@@ -358,6 +368,26 @@ class Database:
         )
         return {row[0] for row in await cursor.fetchall()}
 
+    async def get_exams_for_student(self, student_key: str) -> list[dict[str, object]]:
+        cursor = await self.db.execute(
+            "SELECT id, date, subject, type, description, teacher "
+            "FROM exams WHERE student_key = ? AND deleted_at IS NULL "
+            "ORDER BY date DESC",
+            (student_key,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "date": r[1],
+                "subject": r[2],
+                "type": r[3],
+                "description": r[4],
+                "teacher": r[5],
+            }
+            for r in rows
+        ]
+
     # ── Homework ─────────────────────────────────────────────────────
 
     async def upsert_homework(self, student_key: str, hw: Homework) -> None:
@@ -393,6 +423,25 @@ class Database:
             (student_key,),
         )
         return {row[0] for row in await cursor.fetchall()}
+
+    async def get_homework_for_student(self, student_key: str) -> list[dict[str, object]]:
+        cursor = await self.db.execute(
+            "SELECT id, date, subject, content, teacher "
+            "FROM homework WHERE student_key = ? AND deleted_at IS NULL "
+            "ORDER BY date DESC",
+            (student_key,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "date": r[1],
+                "subject": r[2],
+                "content": r[3],
+                "teacher": r[4],
+            }
+            for r in rows
+        ]
 
     # ── Messages ─────────────────────────────────────────────────────
 
@@ -430,6 +479,26 @@ class Database:
                 "date": r[2],
                 "mailbox": r[3],
                 "content": r[4],
+            }
+            for r in rows
+        ]
+
+    async def get_all_messages(self) -> list[dict[str, object]]:
+        cursor = await self.db.execute(
+            "SELECT id, sender, subject, date, mailbox, has_attachments, is_read, content "
+            "FROM messages ORDER BY date DESC"
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "sender": r[1],
+                "subject": r[2],
+                "date": r[3],
+                "mailbox": r[4],
+                "has_attachments": r[5],
+                "is_read": r[6],
+                "content": r[7],
             }
             for r in rows
         ]
