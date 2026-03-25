@@ -191,6 +191,16 @@ async def cmd_calendar() -> None:
         await db.close()
 
 
+async def cmd_tui() -> None:
+    """Launch interactive TUI for browsing synced data."""
+    try:
+        from vulcan_notify.tui import run_tui
+    except ImportError:
+        print("Textual not installed. Run: uv sync --extra tui")
+        sys.exit(1)
+    await run_tui()
+
+
 async def cmd_summarize(summary_type: str = "sync", days: int = 7) -> None:
     """Summarize stored data using AI."""
     if not settings.llm_api_key:
@@ -268,6 +278,8 @@ def main() -> None:
             asyncio.run(cmd_sync())
         case "calendar":
             asyncio.run(cmd_calendar())
+        case "tui":
+            asyncio.run(cmd_tui())
         case "summarize":
             summary_type = "sync"
             days = 7
@@ -282,11 +294,12 @@ def main() -> None:
                 sys.exit(1)
             asyncio.run(cmd_summarize(summary_type=summary_type, days=days))
         case _:
-            print("Usage: vulcan-notify [auth|test|sync|calendar|summarize]")
+            print("Usage: vulcan-notify [auth|test|sync|calendar|tui|summarize]")
             print("  auth      - Interactive login and save session")
             print("  test      - Test if saved session is valid")
             print("  sync      - Fetch latest data and show changes (default)")
             print("  calendar  - Force re-sync all events to macOS Calendar")
+            print("  tui       - Interactive message browser")
             print("  summarize - AI summary of recent changes or messages")
             print("    --type sync|messages  (default: sync)")
             print("    --days N              (default: 7)")
