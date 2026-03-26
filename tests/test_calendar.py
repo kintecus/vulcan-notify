@@ -16,8 +16,8 @@ from vulcan_notify.models import Exam, Homework, Student
 
 STUDENT = Student(
     key="KEY1",
-    name="Solomiia Senyuk",
-    class_name="4E",
+    name="Alice Smith",
+    class_name="4B",
     school="Szkola",
     diary_id=1001,
     mailbox_key="aaa",
@@ -201,7 +201,7 @@ async def test_sync_creates_events(
     mock_settings: AsyncMock,
     db: Database,
 ) -> None:
-    mock_settings.calendar_map = {"Solomiia Senyuk": "School Solya"}
+    mock_settings.calendar_map = {"Alice Smith": "School Alice"}
     mock_settings.calendar_reminder_hours = 24
     mock_applescript.return_value = "NEW-UID-1"
 
@@ -230,7 +230,7 @@ async def test_sync_updates_existing_events(
     mock_settings: AsyncMock,
     db: Database,
 ) -> None:
-    mock_settings.calendar_map = {"Solomiia Senyuk": "School Solya"}
+    mock_settings.calendar_map = {"Alice Smith": "School Alice"}
     mock_settings.calendar_reminder_hours = 24
     mock_applescript.return_value = ""
 
@@ -252,7 +252,7 @@ async def test_sync_deletes_soft_deleted_events(
     mock_settings: AsyncMock,
     db: Database,
 ) -> None:
-    mock_settings.calendar_map = {"Solomiia Senyuk": "School Solya"}
+    mock_settings.calendar_map = {"Alice Smith": "School Alice"}
     mock_settings.calendar_reminder_hours = 24
     mock_applescript.return_value = ""
 
@@ -305,7 +305,7 @@ async def test_sync_skips_student_without_mapping(
     result = await sync_to_calendar(db)
 
     assert result.created == 0
-    assert "Solomiia Senyuk" in result.skipped_students
+    assert "Alice Smith" in result.skipped_students
     mock_applescript.assert_not_called()
 
 
@@ -316,7 +316,7 @@ async def test_sync_handles_applescript_error(
     mock_settings: AsyncMock,
     db: Database,
 ) -> None:
-    mock_settings.calendar_map = {"Solomiia Senyuk": "School Solya"}
+    mock_settings.calendar_map = {"Alice Smith": "School Alice"}
     mock_settings.calendar_reminder_hours = 24
     mock_applescript.side_effect = RuntimeError("AppleScript failed")
 

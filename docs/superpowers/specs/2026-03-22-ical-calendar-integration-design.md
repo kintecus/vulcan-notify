@@ -14,12 +14,12 @@ Each student maps to an existing iCloud calendar:
 
 | Student | Calendar |
 |---------|----------|
-| Yarema Senyuk | School Yarema |
-| Solomiia Senyuk | School Solya |
+| Alice Smith | School Alice |
+| Bob Johnson | School Bob |
 
 Configured via `CALENDAR_MAP` in `config.py` as a JSON-encoded dict in `.env`:
 ```
-CALENDAR_MAP={"Yarema Senyuk": "School Yarema", "Solomiia Senyuk": "School Solya"}
+CALENDAR_MAP={"Alice Smith": "School Alice", "Bob Johnson": "School Bob"}
 ```
 
 The calendar module joins against the `students` table to resolve `student_key -> student.name -> calendar_name`. If a student has no mapping, their events are skipped with a warning.

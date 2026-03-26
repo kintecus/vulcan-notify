@@ -98,7 +98,7 @@ Push exams and homework to iCloud Calendar as all-day events with reminder alarm
 Add to `.env`:
 
 ```
-CALENDAR_MAP={"Yarema Senyuk": "School Yarema", "Solomiia Senyuk": "School Solya"}
+CALENDAR_MAP={"Alice Smith": "School Alice", "Bob Johnson": "School Bob"}
 ```
 
 The calendar names must match existing calendars in macOS Calendar. Each student maps to their own calendar.

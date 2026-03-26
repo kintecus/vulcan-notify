@@ -81,10 +81,10 @@ def format_attendance(change: Change) -> str:
 
 **Output structure**:
 ```
-Yarema (1E)
+Alice (1A)
   Grades:
-    + 5p in Math - Sprawdzian 1 (teacher: Nowak A.)
-    ~ 4 -> 5 in Polish - Kartkowka 3 (teacher: Kowalski J.)
+    + 5p in Math - Sprawdzian 1 (teacher: Smith A.)
+    ~ 4 -> 5 in Polish - Kartkowka 3 (teacher: Brown J.)
   Attendance:
     ! Absent: 2026-03-14, lesson 3 (Przyroda)
   Exams:
@@ -92,11 +92,11 @@ Yarema (1E)
   Homework:
     Plastyka - due 2026-03-16
 
-Solomiia (4E)
+Bob (4B)
   No changes since last sync.
 
 Messages (whitelisted senders):
-  From: Dragosz A. - "Zebranie z rodzicami" (2026-03-14)
+  From: Jones A. - "Zebranie z rodzicami" (2026-03-14)
 ```
 
 **Key decisions**:
@@ -142,7 +142,7 @@ def filter_messages(
 ```
 
 **Key decisions**:
-- Substring match (not exact) so "Dragosz" matches "Dragosz Aneta [AD]"
+- Substring match (not exact) so "Jones" matches "Jones Anna [JA]"
 - Case-insensitive
 - Empty whitelist = show all (no filtering)
 
