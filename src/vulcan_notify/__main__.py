@@ -155,7 +155,7 @@ async def cmd_calendar() -> None:
     """Force re-sync all active exams/homework to macOS Calendar."""
     if not settings.calendar_map:
         print("CALENDAR_MAP not configured. Set it in .env, e.g.:")
-        print('  CALENDAR_MAP={"Yarema Senyuk": "School Yarema"}')
+        print('  CALENDAR_MAP={"Alice Smith": "School Alice"}')
         sys.exit(1)
 
     db = Database(settings.db_path)

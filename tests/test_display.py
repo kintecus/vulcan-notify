@@ -48,9 +48,9 @@ def _attendance_change() -> Change:
 
 
 def _make_message(
-    sender: str = "Nowak Anna - P - (ZSIJP)",
+    sender: str = "Nowak Anna - P - (SCHOOL)",
     subject: str = "Test message",
-    mailbox: str = "Senyuk Ostap - R - Senyuk Yarema - (ZSIJP)",
+    mailbox: str = "Parent One - R - Child One - (SCHOOL)",
 ) -> Message:
     return Message(
         id=1,
@@ -127,8 +127,8 @@ def test_format_full_sync_with_messages() -> None:
 
 def test_format_full_sync_message_whitelist() -> None:
     sr = SyncResult(student=STUDENT)
-    msg1 = _make_message(sender="Nowak Anna - P - (ZSIJP)", subject="Important")
-    msg2 = _make_message(sender="System - P - (ZSIJP)", subject="Spam")
+    msg1 = _make_message(sender="Nowak Anna - P - (SCHOOL)", subject="Important")
+    msg2 = _make_message(sender="System - P - (SCHOOL)", subject="Spam")
     result = FullSyncResult(
         student_results=[sr],
         new_messages=[msg1, msg2],

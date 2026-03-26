@@ -51,7 +51,7 @@ def _strip_html(html: str) -> str:
 
 
 def _format_sender_short(sender: str) -> str:
-    """Shorten sender like 'Kruczek Patrycja - P - (ZSIJP)' to 'Kruczek P.'."""
+    """Shorten sender like 'Smith Anna - P - (SCHOOL)' to 'Smith A.'."""
     parts = sender.split(" - ")
     name_part = parts[0].strip() if parts else sender
     name_words = name_part.split()
@@ -65,7 +65,7 @@ def format_message(msg: Message, show_content: bool = True) -> list[str]:
     sender = _format_sender_short(msg.sender)
     lines = [f'    {GREEN}+{RESET} From: {sender} - "{msg.subject}"']
     if msg.mailbox:
-        # Extract kid name from mailbox like "Senyuk Ostap - R - Senyuk Yarema - (ZSIJP)"
+        # Extract kid name from mailbox like "Parent Name - R - Child Name - (SCHOOL)"
         mailbox_parts = msg.mailbox.split(" - ")
         if len(mailbox_parts) >= 3:
             kid_name = mailbox_parts[2].strip().split(" - ")[0]
