@@ -144,6 +144,41 @@ def format_full_sync(
     return "\n".join(lines)
 
 
+def format_compact_sync(
+    result: FullSyncResult,
+    whitelist: list[str] | None = None,
+) -> str:
+    """One-line sync summary for daemon/log output."""
+    parts: list[str] = []
+
+    for sr in result.student_results:
+        if sr.is_first_sync:
+            parts.append(f"{sr.student.name}: initial sync")
+            continue
+        counts = []
+        if sr.new_grades:
+            counts.append(f"{len(sr.new_grades)} grades")
+        if sr.new_attendance:
+            counts.append(f"{len(sr.new_attendance)} attendance")
+        if sr.new_exams:
+            counts.append(f"{len(sr.new_exams)} exams")
+        if sr.new_homework:
+            counts.append(f"{len(sr.new_homework)} homework")
+        if counts:
+            parts.append(f"{sr.student.name}: {', '.join(counts)}")
+
+    if result.is_first_message_sync:
+        parts.append("messages: initial sync")
+    elif result.new_messages:
+        filtered = filter_messages(result.new_messages, whitelist or [])
+        if filtered:
+            parts.append(f"{len(filtered)} new messages")
+
+    if not parts:
+        return "No changes"
+    return " | ".join(parts)
+
+
 def filter_messages(
     messages: list[Message],
     whitelist: list[str],

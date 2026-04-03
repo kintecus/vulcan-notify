@@ -17,7 +17,7 @@ from vulcan_notify.calendar import sync_to_calendar
 from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
-from vulcan_notify.display import BOLD, RESET, format_full_sync
+from vulcan_notify.display import BOLD, RESET, format_compact_sync, format_full_sync
 from vulcan_notify.summarizer import format_changes_for_llm, summarize
 from vulcan_notify.sync import sync_all
 
@@ -116,6 +116,12 @@ async def cmd_sync() -> None:
     db = Database(settings.db_path)
     await db.connect()
 
+    def _print_result(result):  # type: ignore[no-untyped-def]
+        if sys.stdout.isatty():
+            print(format_full_sync(result, settings.message_sender_whitelist))
+        else:
+            print(format_compact_sync(result, settings.message_sender_whitelist))
+
     try:
         result = await sync_all(client, db)
 
@@ -123,8 +129,7 @@ async def cmd_sync() -> None:
             print("No students found.")
             sys.exit(1)
 
-        output = format_full_sync(result, settings.message_sender_whitelist)
-        print(output)
+        _print_result(result)
         await _sync_calendar(db)
 
     except SessionExpiredError:
@@ -136,8 +141,7 @@ async def cmd_sync() -> None:
             session = await auto_login(settings.session_file, creds[0], creds[1])
             client = VulcanClient(session)
             result = await sync_all(client, db)
-            output = format_full_sync(result, settings.message_sender_whitelist)
-            print(output)
+            _print_result(result)
             await _sync_calendar(db)
         else:
             print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
