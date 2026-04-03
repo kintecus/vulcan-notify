@@ -1,5 +1,6 @@
 services:
   vulcan-notify:
+    container_name: vulcan-notify
     build: .
     restart: unless-stopped
     env_file: .env
@@ -7,4 +8,4 @@ services:
       - ./data:/app/data
     environment:
       - DB_PATH=/app/data/vulcan_notify.db
-      - CREDENTIAL_FILE=/app/data/credential.json
+      - SESSION_FILE=/app/data/session.json

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for vulcan-notify updates every 5 min
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
