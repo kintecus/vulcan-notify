@@ -24,7 +24,8 @@ def _get_grades(n: int = 5) -> dict[str, Any]:
         for g in db.execute(
             "SELECT value, date, subject, column_name, category "
             "FROM grades WHERE student_key = ? "
-            "ORDER BY first_seen DESC LIMIT ?",
+            "ORDER BY substr(date,7,4)||substr(date,4,2)||substr(date,1,2) DESC "
+            "LIMIT ?",
             (s["key"], n),
         ):
             grades.append(dict(g))
