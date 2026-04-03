@@ -6,6 +6,8 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
+    ports:
+      - "8585:8585"
     environment:
       - DB_PATH=/app/data/vulcan_notify.db
       - SESSION_FILE=/app/data/session.json
