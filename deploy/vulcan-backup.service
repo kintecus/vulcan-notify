@@ -1,0 +1,6 @@
+[Unit]
+Description=vulcan-notify database backup
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vulcan-notify/deploy/backup-db.sh
