@@ -332,24 +332,21 @@ async def test_session(session_data: dict[str, Any]) -> bool:
         text = await resp.text()
         content_type = resp.headers.get("content-type", "")
 
-        print(f"[auth] Response: status={resp.status} content-type={content_type} len={len(text)}")
+        logger.debug("Session test: status=%d content-type=%s len=%d", resp.status, content_type, len(text))
 
         if resp.status != 200:
-            print(f"[auth] Session invalid: status {resp.status}")
-            print(f"[auth] Body: {text[:300]}")
+            logger.warning("Session invalid: status %d", resp.status)
             return False
 
         # If we got HTML back, the session is expired (redirect to login)
         if "text/html" in content_type:
-            print("[auth] Got HTML instead of JSON - session expired or cookies not sent correctly")
-            print(f"[auth] Body preview: {text[:300]}")
+            logger.info("Session expired (got HTML instead of JSON)")
             return False
 
         try:
-            data = json.loads(text)
-            print("[auth] Session valid! Got JSON response.")
-            print(f"[auth] Data: {json.dumps(data, indent=2, ensure_ascii=False)[:500]}")
+            json.loads(text)
+            logger.debug("Session valid")
             return True
         except json.JSONDecodeError:
-            print(f"[auth] Unexpected response: {text[:300]}")
+            logger.warning("Unexpected response: %s", text[:300])
             return False

@@ -6,6 +6,8 @@ import logging
 import sys
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 from vulcan_notify.auth import (
     auto_login,
     get_keychain_credentials,
@@ -65,7 +67,7 @@ async def _ensure_session() -> dict[str, Any]:
     # Session missing or expired - try auto-login
     creds = _get_credentials()
     if creds:
-        print("Session expired. Auto-logging in...")
+        logger.info("Session expired, auto-logging in...")
         return await auto_login(settings.session_file, creds[0], creds[1])
 
     if session is None:
@@ -136,7 +138,7 @@ async def cmd_sync() -> None:
         # Try auto-reauth once if it fails mid-sync
         creds = _get_credentials()
         if creds:
-            print("Session expired mid-sync. Re-authenticating...")
+            logger.info("Session expired mid-sync, re-authenticating...")
             await client.close()
             session = await auto_login(settings.session_file, creds[0], creds[1])
             client = VulcanClient(session)
