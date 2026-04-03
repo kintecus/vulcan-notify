@@ -76,7 +76,9 @@ async def login_and_save_session(session_path: Path) -> dict[str, Any]:
     dashboard_url = ""
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(
+            headless=False, args=["--no-sandbox", "--disable-gpu"]
+        )
         context = await browser.new_context()
         page = await context.new_page()
 
@@ -147,7 +149,9 @@ async def auto_login(session_path: Path, login: str, password: str) -> dict[str,
     login_complete = asyncio.Event()
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(
+            headless=True, args=["--no-sandbox", "--disable-gpu"]
+        )
         context = await browser.new_context()
         page = await context.new_page()
 

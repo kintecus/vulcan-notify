@@ -1,0 +1,9 @@
+[Unit]
+Description=vulcan-notify auto-deploy
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vulcan-notify/deploy/vulcan-deploy.sh
+WorkingDirectory=/opt/vulcan-notify
