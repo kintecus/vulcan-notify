@@ -13,7 +13,7 @@ from vulcan_notify.differ import Change, diff_attendance, diff_exams, diff_grade
 if TYPE_CHECKING:
     from vulcan_notify.client import VulcanClient
     from vulcan_notify.db import Database
-    from vulcan_notify.models import Message, Student
+    from vulcan_notify.models import Grade, Message, Student
 
 logger = logging.getLogger(__name__)
 
@@ -65,14 +65,19 @@ async def sync_student(
     # ── Grades ───────────────────────────────────────────────────
     try:
         periods = await client.get_periods(student)
+        all_grades: dict[int, Grade] = {}  # dedupe by column_id, keep first occurrence
         for period in periods:
             grades = await client.get_grades(student, period)
-
-            if not is_first:
-                result.new_grades.extend(await diff_grades(student, grades, db))
-
             for grade in grades:
-                await db.upsert_grade(student.key, grade)
+                if grade.column_id not in all_grades:
+                    all_grades[grade.column_id] = grade
+
+        deduplicated = list(all_grades.values())
+        if not is_first:
+            result.new_grades.extend(await diff_grades(student, deduplicated, db))
+
+        for grade in deduplicated:
+            await db.upsert_grade(student.key, grade)
     except Exception:
         logger.exception("Failed to sync grades for %s", student.name)
 
