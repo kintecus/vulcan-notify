@@ -2,6 +2,11 @@
 set -e
 
 POLL_INTERVAL="${POLL_INTERVAL:-300}"
+API_PORT="${API_PORT:-8585}"
+
+# Start API server in background
+echo "[entrypoint] Starting API server on port ${API_PORT}"
+uv run python -m vulcan_notify.api &
 
 echo "[entrypoint] vulcan-notify sync loop (interval: ${POLL_INTERVAL}s)"
 
