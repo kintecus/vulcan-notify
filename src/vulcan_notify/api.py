@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import datetime, timedelta
 from typing import Any
 
 from aiohttp import web
@@ -17,6 +18,12 @@ def _connect() -> sqlite3.Connection:
     db = sqlite3.connect(str(settings.db_path))
     db.row_factory = sqlite3.Row
     return db
+
+
+def _date_minus_days(iso_date: str, days: int) -> str:
+    """Return ISO date string shifted back by N days."""
+    dt = datetime.strptime(iso_date, "%Y-%m-%d") - timedelta(days=days)
+    return dt.strftime("%Y-%m-%d")
 
 
 def _grade_to_numeric(value: str) -> float | None:
@@ -34,8 +41,10 @@ def _grade_to_numeric(value: str) -> float | None:
     return float(base)
 
 
-def _get_grade_averages(student_filter: str | None = None) -> dict[str, Any]:
-    """Compute weighted grade averages per student, with cumulative time series."""
+def _get_grade_averages(
+    student_filter: str | None = None, window_days: int = 30,
+) -> dict[str, Any]:
+    """Compute weighted grade averages per student with rolling window time series."""
     db = _connect()
     result: dict[str, Any] = {}
 
@@ -52,30 +61,41 @@ def _get_grade_averages(student_filter: str | None = None) -> dict[str, Any]:
             (s["key"],),
         ).fetchall()
 
-        weighted_sum = 0.0
-        weight_sum = 0
-        count = 0
-        timeline: list[dict[str, Any]] = []
-
+        # Parse all grades into a list with ISO dates
+        parsed: list[tuple[str, float, int]] = []
         for g in grades:
             numeric = _grade_to_numeric(g["value"])
             if numeric is None:
                 continue
-            w = g["weight"] or 1
-            weighted_sum += numeric * w
-            weight_sum += w
-            count += 1
-            # Convert DD.MM.YYYY to YYYY-MM-DD for HA
             raw_date = g["date"]
             iso_date = f"{raw_date[6:10]}-{raw_date[3:5]}-{raw_date[0:2]}"
-            timeline.append({
-                "date": iso_date,
-                "cumulative_average": round(weighted_sum / weight_sum, 2),
-            })
+            parsed.append((iso_date, numeric, g["weight"] or 1))
+
+        # Compute rolling window average at each grade date
+        timeline: list[dict[str, Any]] = []
+        for i, (date, _, _) in enumerate(parsed):
+            cutoff = _date_minus_days(date, window_days)
+            w_sum = 0.0
+            wt_sum = 0
+            for d, val, w in parsed[:i + 1]:
+                if d >= cutoff:
+                    w_sum += val * w
+                    wt_sum += w
+            if wt_sum:
+                timeline.append({
+                    "date": date,
+                    "average": round(w_sum / wt_sum, 2),
+                })
+
+        # Current overall weighted average (all time)
+        total_w_sum = sum(v * w for _, v, w in parsed)
+        total_wt = sum(w for _, _, w in parsed)
 
         result[s["name"]] = {
-            "average": round(weighted_sum / weight_sum, 2) if weight_sum else None,
-            "count": count,
+            "average": round(total_w_sum / total_wt, 2) if total_wt else None,
+            "rolling_average": timeline[-1]["average"] if timeline else None,
+            "window_days": window_days,
+            "count": len(parsed),
             "grades_over_time": timeline,
         }
 
@@ -143,7 +163,8 @@ def _get_messages(n: int = 20) -> list[dict[str, Any]]:
 
 async def handle_grades_average(request: web.Request) -> web.Response:
     student = request.query.get("student")
-    return web.json_response(_get_grade_averages(student))
+    window = int(request.query.get("window", "30"))
+    return web.json_response(_get_grade_averages(student, window))
 
 
 async def handle_grades(request: web.Request) -> web.Response:
