@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     calendar_map: dict[str, str] = {}  # student name -> calendar name
     calendar_reminder_hours: int = 24  # alarm trigger (hours before event)
 
+    # MQTT (optional - publish changes to Mosquitto broker)
+    mqtt_enabled: bool = False
+    mqtt_broker: str = "localhost"
+    mqtt_port: int = 1883
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
+    mqtt_topic_prefix: str = "school"
+
     # Logging
     log_level: str = "INFO"
 

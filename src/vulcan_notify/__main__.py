@@ -20,6 +20,7 @@ from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
 from vulcan_notify.display import BOLD, RESET, format_compact_sync, format_full_sync
+from vulcan_notify.mqtt import publish_changes
 from vulcan_notify.summarizer import format_changes_for_llm, summarize
 from vulcan_notify.sync import sync_all
 
@@ -133,6 +134,7 @@ async def cmd_sync() -> None:
 
         _print_result(result)
         await _sync_calendar(db)
+        await publish_changes(result)
 
     except SessionExpiredError:
         # Try auto-reauth once if it fails mid-sync
@@ -145,6 +147,7 @@ async def cmd_sync() -> None:
             result = await sync_all(client, db)
             _print_result(result)
             await _sync_calendar(db)
+            await publish_changes(result)
         else:
             print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
             print(
