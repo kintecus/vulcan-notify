@@ -51,6 +51,8 @@ def build_payload(change: Change) -> dict[str, object]:
     raw = change.raw
     base: dict[str, object] = {
         "student": change.student_name,
+        "title": change.title,
+        "message": change.body,
         "timestamp": _now_iso(),
     }
 
@@ -94,16 +96,14 @@ def build_payload(change: Change) -> dict[str, object]:
             teacher=raw.teacher,
         )
 
-    else:
-        # Fallback: use pre-formatted title/body
-        base.update(title=change.title, body=change.body)
-
     return base
 
 
 def build_message_payload(msg: Message) -> dict[str, object]:
     """Build a structured JSON payload for a new message."""
     return {
+        "title": f"Message from {msg.sender}",
+        "message": f"Subject: {msg.subject}",
         "sender": msg.sender,
         "subject": msg.subject,
         "date": msg.date,
