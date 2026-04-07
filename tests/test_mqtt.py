@@ -75,27 +75,27 @@ def _make_change(item_type: str, raw: object, change_type: str = "new", **kwargs
 
 def test_topic_for_new_grade() -> None:
     change = _make_change("grade", GRADE)
-    assert topic_for(change) == "school/Kacper/grades/new"
+    assert topic_for(change) == "school/kacper/grades/new"
 
 
 def test_topic_for_updated_grade() -> None:
     change = _make_change("grade", GRADE, change_type="updated")
-    assert topic_for(change) == "school/Kacper/grades/updated"
+    assert topic_for(change) == "school/kacper/grades/updated"
 
 
 def test_topic_for_attendance() -> None:
     change = _make_change("attendance", ATTENDANCE)
-    assert topic_for(change) == "school/Kacper/attendance/alert"
+    assert topic_for(change) == "school/kacper/attendance/alert"
 
 
 def test_topic_for_exam() -> None:
     change = _make_change("exam", EXAM)
-    assert topic_for(change) == "school/Kacper/exams/new"
+    assert topic_for(change) == "school/kacper/exams/new"
 
 
 def test_topic_for_homework() -> None:
     change = _make_change("homework", HOMEWORK)
-    assert topic_for(change) == "school/Kacper/homework/new"
+    assert topic_for(change) == "school/kacper/homework/new"
 
 
 # ── build_payload ────────────────────────────────────────────────
@@ -246,7 +246,7 @@ async def test_publish_sends_changes() -> None:
 
     mock_client_instance.publish.assert_called_once()
     call_args = mock_client_instance.publish.call_args
-    assert call_args[0][0] == "school/Kacper/grades/new"
+    assert call_args[0][0] == "school/kacper/grades/new"
 
 
 async def test_publish_skips_first_sync() -> None:

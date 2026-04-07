@@ -34,10 +34,15 @@ _TOPIC_SEGMENTS = {
 }
 
 
+def _slugify(name: str) -> str:
+    """Convert a name to lowercase kebab-case for MQTT topics."""
+    return name.lower().replace(" ", "-")
+
+
 def topic_for(change: Change) -> str:
     """Map a Change to its MQTT topic."""
     prefix = settings.mqtt_topic_prefix
-    student = change.student_name
+    student = _slugify(change.student_name)
     segment = _TOPIC_SEGMENTS.get(change.item_type, change.item_type)
 
     if change.item_type == "attendance":
@@ -150,7 +155,7 @@ async def publish_changes(result: FullSyncResult) -> None:
             if not result.is_first_message_sync:
                 prefix = settings.mqtt_topic_prefix
                 for msg in result.new_messages:
-                    topic = f"{prefix}/{msg.mailbox}/messages/new"
+                    topic = f"{prefix}/{_slugify(msg.mailbox)}/messages/new"
                     payload = json.dumps(build_message_payload(msg))
                     await client.publish(topic, payload)
                     logger.debug("MQTT publish: %s", topic)
