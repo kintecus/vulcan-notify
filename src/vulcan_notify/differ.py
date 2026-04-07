@@ -30,6 +30,8 @@ class Change:
     body: str
     priority: int = 3
     tags: list[str] | None = None
+    raw: object | None = None  # original model for structured MQTT payloads
+    old_value: str | None = None  # previous value (for updated grades)
 
 
 async def diff_grades(
@@ -63,10 +65,11 @@ async def diff_grades(
                     ),
                     priority=4,
                     tags=["pencil2", "school"],
+                    raw=grade,
                 )
             )
         elif existing["value"] != grade.value:
-            old_value = existing["value"]
+            old_value = str(existing["value"])
             changes.append(
                 Change(
                     change_type="updated",
@@ -81,6 +84,8 @@ async def diff_grades(
                     ),
                     priority=4,
                     tags=["pencil2", "school"],
+                    raw=grade,
+                    old_value=old_value,
                 )
             )
 
@@ -118,6 +123,7 @@ async def diff_attendance(
                     ),
                     priority=3,
                     tags=["calendar", "school"],
+                    raw=entry,
                 )
             )
 
@@ -145,6 +151,7 @@ async def diff_exams(
                     body=f"Date: {exam.date}\nSubject: {exam.subject}",
                     priority=3,
                     tags=["memo", "school"],
+                    raw=exam,
                 )
             )
 
@@ -171,6 +178,7 @@ async def diff_homework(
                     body=f"Due: {hw.date}\nSubject: {hw.subject}",
                     priority=2,
                     tags=["books", "school"],
+                    raw=hw,
                 )
             )
 
