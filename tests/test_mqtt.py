@@ -106,6 +106,8 @@ def test_build_payload_new_grade() -> None:
     payload = build_payload(change)
 
     assert payload["student"] == "Kacper"
+    assert payload["title"] == "test"
+    assert payload["message"] == "test"
     assert payload["subject"] == "Matematyka"
     assert payload["value"] == "4+"
     assert payload["category"] == "Sprawdzian"
@@ -159,7 +161,7 @@ def test_build_payload_homework() -> None:
     assert payload["teacher"] == "Zielinski D."
 
 
-def test_build_payload_fallback_no_raw() -> None:
+def test_build_payload_no_raw_still_has_title_message() -> None:
     change = Change(
         change_type="new",
         item_type="grade",
@@ -170,7 +172,7 @@ def test_build_payload_fallback_no_raw() -> None:
     payload = build_payload(change)
 
     assert payload["title"] == "Test title"
-    assert payload["body"] == "Test body"
+    assert payload["message"] == "Test body"
 
 
 # ── build_message_payload ────────────────────────────────────────
@@ -189,6 +191,8 @@ def test_build_message_payload() -> None:
     )
     payload = build_message_payload(msg)
 
+    assert payload["title"] == "Message from Kowalska A."
+    assert payload["message"] == "Subject: Informacja"
     assert payload["sender"] == "Kowalska A."
     assert payload["subject"] == "Informacja"
     assert payload["date"] == "2026-04-07"
