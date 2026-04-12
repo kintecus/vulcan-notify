@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -42,7 +43,8 @@ def _grade_to_numeric(value: str) -> float | None:
 
 
 def _get_grade_averages(
-    student_filter: str | None = None, window_days: int = 30,
+    student_filter: str | None = None,
+    window_days: int = 30,
 ) -> dict[str, Any]:
     """Compute weighted grade averages per student with rolling window time series."""
     db = _connect()
@@ -77,15 +79,17 @@ def _get_grade_averages(
             cutoff = _date_minus_days(date, window_days)
             w_sum = 0.0
             wt_sum = 0
-            for d, val, w in parsed[:i + 1]:
+            for d, val, w in parsed[: i + 1]:
                 if d >= cutoff:
                     w_sum += val * w
                     wt_sum += w
             if wt_sum:
-                timeline.append({
-                    "date": date,
-                    "average": round(w_sum / wt_sum, 2),
-                })
+                timeline.append(
+                    {
+                        "date": date,
+                        "average": round(w_sum / wt_sum, 2),
+                    }
+                )
 
         # Current overall weighted average (all time)
         total_w_sum = sum(v * w for _, v, w in parsed)
@@ -98,6 +102,79 @@ def _get_grade_averages(
             "count": len(parsed),
             "grades_over_time": timeline,
         }
+
+    db.close()
+    return result
+
+
+def _month_list(year: int | None, months: int) -> list[str]:
+    """Return ordered list of YYYY-MM strings for the requested range."""
+    if year is not None:
+        return [f"{year:04d}-{m:02d}" for m in range(1, 13)]
+    now = datetime.now()
+    out: list[str] = []
+    y, m = now.year, now.month
+    for _ in range(months):
+        out.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    out.reverse()
+    return out
+
+
+def _get_monthly_averages(
+    student_filter: str | None = None,
+    year: int | None = None,
+    months: int = 6,
+) -> dict[str, Any]:
+    """Compute weighted grade averages grouped by calendar month per student."""
+    db = _connect()
+    result: dict[str, Any] = {}
+
+    query = "SELECT key, name FROM students"
+    params: tuple[str, ...] = ()
+    if student_filter:
+        query += " WHERE name = ?"
+        params = (student_filter,)
+
+    month_keys = _month_list(year, months)
+
+    for s in db.execute(query, params):
+        grades = db.execute(
+            "SELECT value, date, weight FROM grades WHERE student_key = ?",
+            (s["key"],),
+        ).fetchall()
+
+        buckets: dict[str, tuple[float, int, int]] = {k: (0.0, 0, 0) for k in month_keys}
+        for g in grades:
+            numeric = _grade_to_numeric(g["value"])
+            if numeric is None:
+                continue
+            raw_date = g["date"]
+            month_key = f"{raw_date[6:10]}-{raw_date[3:5]}"
+            if month_key not in buckets:
+                continue
+            w = g["weight"] or 1
+            w_sum, wt_sum, count = buckets[month_key]
+            buckets[month_key] = (w_sum + numeric * w, wt_sum + w, count + 1)
+
+        month_rows: list[dict[str, Any]] = []
+        for key in month_keys:
+            w_sum, wt_sum, count = buckets[key]
+            avg = round(w_sum / wt_sum, 2) if wt_sum else None
+            month_num = int(key[5:7])
+            month_rows.append(
+                {
+                    "month": key,
+                    "label": calendar.month_abbr[month_num],
+                    "average": avg,
+                    "count": count,
+                }
+            )
+
+        result[s["name"]] = {"months": month_rows}
 
     db.close()
     return result
@@ -152,8 +229,7 @@ def _get_messages(n: int = 20) -> list[dict[str, Any]]:
     db = _connect()
     messages = []
     for m in db.execute(
-        "SELECT sender, subject, date, content "
-        "FROM messages ORDER BY date DESC LIMIT ?",
+        "SELECT sender, subject, date, content FROM messages ORDER BY date DESC LIMIT ?",
         (n,),
     ):
         messages.append(dict(m))
@@ -165,6 +241,14 @@ async def handle_grades_average(request: web.Request) -> web.Response:
     student = request.query.get("student")
     window = int(request.query.get("window", "30"))
     return web.json_response(_get_grade_averages(student, window))
+
+
+async def handle_grades_monthly(request: web.Request) -> web.Response:
+    student = request.query.get("student")
+    year_q = request.query.get("year")
+    year = int(year_q) if year_q else None
+    months = int(request.query.get("months", "6"))
+    return web.json_response(_get_monthly_averages(student, year, months))
 
 
 async def handle_grades(request: web.Request) -> web.Response:
@@ -189,6 +273,7 @@ async def handle_health(request: web.Request) -> web.Response:
 def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/api/grades/average", handle_grades_average)
+    app.router.add_get("/api/grades/monthly", handle_grades_monthly)
     app.router.add_get("/api/grades", handle_grades)
     app.router.add_get("/api/homework", handle_homework)
     app.router.add_get("/api/messages", handle_messages)
