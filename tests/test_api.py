@@ -108,6 +108,20 @@ async def test_monthly_averages_student_filter(seeded_db: Path) -> None:
     assert api_mod._get_monthly_averages(student_filter="Ghost", year=2026) == {}
 
 
+async def test_subject_averages(seeded_db: Path) -> None:
+    result = api_mod._get_subject_averages()
+    subjects = result["Solomiia"]["subjects"]
+    # seeded data uses subject "Math" for all grades; non-numeric "np" skipped
+    assert len(subjects) == 1
+    row = subjects[0]
+    assert row["subject"] == "Math"
+    assert row["count"] == 5
+    # Descending sort: single subject -> trivially first
+    assert all(
+        subjects[i]["average"] >= subjects[i + 1]["average"] for i in range(len(subjects) - 1)
+    )
+
+
 def test_month_list_year_mode() -> None:
     out = api_mod._month_list(2025, months=6)
     assert out == [f"2025-{m:02d}" for m in range(1, 13)]

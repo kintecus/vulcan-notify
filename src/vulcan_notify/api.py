@@ -180,6 +180,49 @@ def _get_monthly_averages(
     return result
 
 
+def _get_subject_averages(student_filter: str | None = None) -> dict[str, Any]:
+    """Compute weighted grade averages grouped by subject, sorted descending."""
+    db = _connect()
+    result: dict[str, Any] = {}
+
+    query = "SELECT key, name FROM students"
+    params: tuple[str, ...] = ()
+    if student_filter:
+        query += " WHERE name = ?"
+        params = (student_filter,)
+
+    for s in db.execute(query, params):
+        grades = db.execute(
+            "SELECT value, subject, weight FROM grades WHERE student_key = ?",
+            (s["key"],),
+        ).fetchall()
+
+        buckets: dict[str, tuple[float, int, int]] = {}
+        for g in grades:
+            numeric = _grade_to_numeric(g["value"])
+            if numeric is None:
+                continue
+            subject = g["subject"]
+            w = g["weight"] or 1
+            w_sum, wt_sum, count = buckets.get(subject, (0.0, 0, 0))
+            buckets[subject] = (w_sum + numeric * w, wt_sum + w, count + 1)
+
+        rows = [
+            {
+                "subject": subject,
+                "average": round(w_sum / wt_sum, 2),
+                "count": count,
+            }
+            for subject, (w_sum, wt_sum, count) in buckets.items()
+            if wt_sum
+        ]
+        rows.sort(key=lambda r: r["average"], reverse=True)
+        result[s["name"]] = {"subjects": rows}
+
+    db.close()
+    return result
+
+
 def _get_grades(n: int = 5) -> dict[str, Any]:
     """Read latest N grades per student from the database."""
     db = _connect()
@@ -251,6 +294,11 @@ async def handle_grades_monthly(request: web.Request) -> web.Response:
     return web.json_response(_get_monthly_averages(student, year, months))
 
 
+async def handle_grades_by_subject(request: web.Request) -> web.Response:
+    student = request.query.get("student")
+    return web.json_response(_get_subject_averages(student))
+
+
 async def handle_grades(request: web.Request) -> web.Response:
     n = int(request.query.get("n", "5"))
     return web.json_response(_get_grades(n))
@@ -274,6 +322,7 @@ def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/api/grades/average", handle_grades_average)
     app.router.add_get("/api/grades/monthly", handle_grades_monthly)
+    app.router.add_get("/api/grades/by-subject", handle_grades_by_subject)
     app.router.add_get("/api/grades", handle_grades)
     app.router.add_get("/api/homework", handle_homework)
     app.router.add_get("/api/messages", handle_messages)
