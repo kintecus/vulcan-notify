@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         Exam,
         Grade,
         Homework,
+        Lesson,
         Student,
     )
 
@@ -154,6 +155,94 @@ async def diff_exams(
                     raw=exam,
                 )
             )
+
+    return changes
+
+
+def _sub_summary(lesson: Lesson) -> str:
+    parts = []
+    if lesson.sub_teacher and lesson.sub_teacher != lesson.teacher:
+        parts.append(f"teacher: {lesson.teacher} -> {lesson.sub_teacher}")
+    if lesson.sub_room and lesson.sub_room != lesson.room:
+        parts.append(f"room: {lesson.room or '?'} -> {lesson.sub_room}")
+    if lesson.absence_info:
+        parts.append(lesson.absence_info)
+    if lesson.remarks:
+        parts.append(lesson.remarks)
+    return "; ".join(parts) if parts else "changed"
+
+
+def _lesson_state(row: dict[str, object] | Lesson) -> tuple[object, ...]:
+    """Tuple of fields we care about for change detection."""
+    if isinstance(row, dict):
+        return (
+            row.get("sub_teacher"),
+            row.get("sub_room"),
+            row.get("sub_type"),
+            row.get("absence_info"),
+            row.get("remarks"),
+            row.get("annotation"),
+        )
+    return (
+        row.sub_teacher,
+        row.sub_room,
+        row.sub_type,
+        row.absence_info,
+        row.remarks,
+        row.annotation,
+    )
+
+
+async def diff_schedule(
+    student: Student,
+    fetched: list[Lesson],
+    db: Database,
+) -> list[Change]:
+    """Detect new or changed substitutions in the upcoming schedule.
+
+    We only report lessons that are substituted (have zmiany / remarks / annotation).
+    Unchanged regular lessons are stored silently for baselining.
+    """
+    date_from = min((lsn.date for lsn in fetched), default=None)
+    date_to = max((lsn.date for lsn in fetched), default=None)
+    stored_rows = await db.get_lessons_for_student(student.key, date_from, date_to)
+    stored_by_key = {(r["date"], r["time_from"], r["subject"]): r for r in stored_rows}
+    changes: list[Change] = []
+
+    for lesson in fetched:
+        key = (lesson.date, lesson.time_from, lesson.subject)
+        existing = stored_by_key.get(key)
+
+        if not lesson.is_substituted:
+            continue
+
+        new_state = _lesson_state(lesson)
+        if existing is None:
+            change_type = "new"
+        elif _lesson_state(existing) != new_state:
+            change_type = "updated"
+        else:
+            continue
+
+        title = f"Substitution: {lesson.subject} ({lesson.date})"
+        body_lines = [
+            f"Date: {lesson.date}",
+            f"Time: {lesson.time_from[11:16]}-{lesson.time_to[11:16]}",
+            f"Subject: {lesson.subject}",
+            f"Change: {_sub_summary(lesson)}",
+        ]
+        changes.append(
+            Change(
+                change_type=change_type,
+                item_type="substitution",
+                student_name=student.name,
+                title=title,
+                body="\n".join(body_lines),
+                priority=4,
+                tags=["arrows_counterclockwise", "school"],
+                raw=lesson,
+            )
+        )
 
     return changes
 

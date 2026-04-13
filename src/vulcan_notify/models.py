@@ -80,6 +80,35 @@ class Message:
 
 
 @dataclass
+class Lesson:
+    """One scheduled lesson with optional substitution info."""
+
+    date: str  # local ISO date (YYYY-MM-DD), derived from `data`
+    time_from: str  # godzinaOd (ISO 8601 with tz)
+    time_to: str  # godzinaDo
+    subject: str  # przedmiot
+    teacher: str  # prowadzacy (original)
+    room: str  # sala
+    group: str | None  # podzial
+    annotation: int  # adnotacja (non-zero => has changes)
+    is_extra: bool  # dodatkowe
+    # Substitution — populated only when this lesson was changed
+    sub_teacher: str | None = None  # zmiany[*].prowadzacy
+    sub_room: str | None = None  # zmiany[*].sala
+    sub_type: int | None = None  # zmiany[*].zmiana
+    absence_info: str | None = None  # zmiany[*].informacjeNieobecnosc
+    remarks: str | None = None  # zmianyUwagi joined
+
+    @property
+    def is_substituted(self) -> bool:
+        return (
+            self.sub_teacher is not None
+            or self.sub_room not in (None, "")
+            or self.remarks is not None
+        )
+
+
+@dataclass
 class DashboardData:
     """Combined response from all Tablica endpoints for one student."""
 

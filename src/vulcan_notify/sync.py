@@ -8,7 +8,14 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from vulcan_notify.config import settings
-from vulcan_notify.differ import Change, diff_attendance, diff_exams, diff_grades, diff_homework
+from vulcan_notify.differ import (
+    Change,
+    diff_attendance,
+    diff_exams,
+    diff_grades,
+    diff_homework,
+    diff_schedule,
+)
 
 if TYPE_CHECKING:
     from vulcan_notify.client import VulcanClient
@@ -27,16 +34,29 @@ class SyncResult:
     new_attendance: list[Change] = field(default_factory=list)
     new_exams: list[Change] = field(default_factory=list)
     new_homework: list[Change] = field(default_factory=list)
+    new_substitutions: list[Change] = field(default_factory=list)
     unread_messages: int = 0
     is_first_sync: bool = False
 
     @property
     def has_changes(self) -> bool:
-        return bool(self.new_grades or self.new_attendance or self.new_exams or self.new_homework)
+        return bool(
+            self.new_grades
+            or self.new_attendance
+            or self.new_exams
+            or self.new_homework
+            or self.new_substitutions
+        )
 
     @property
     def all_changes(self) -> list[Change]:
-        return self.new_grades + self.new_attendance + self.new_exams + self.new_homework
+        return (
+            self.new_grades
+            + self.new_attendance
+            + self.new_exams
+            + self.new_homework
+            + self.new_substitutions
+        )
 
 
 @dataclass
@@ -169,6 +189,23 @@ async def sync_student(
     except Exception:
         logger.exception("Failed to sync homework for %s", student.name)
 
+    # ── Schedule / Substitutions ─────────────────────────────────
+    try:
+        now = datetime.now()
+        # Previous week + next two weeks, expressed as UTC ISO for the API.
+        date_from = (now - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00.000Z")
+        date_to = (now + timedelta(days=14)).strftime("%Y-%m-%dT23:59:59.999Z")
+
+        lessons = await client.get_schedule(student, date_from, date_to)
+
+        if not is_first:
+            result.new_substitutions = await diff_schedule(student, lessons, db)
+
+        for lesson in lessons:
+            await db.upsert_lesson(student.key, lesson)
+    except Exception:
+        logger.exception("Failed to sync schedule for %s", student.name)
+
     # Commit all entity upserts in one transaction
     await db.commit()
 
@@ -251,9 +288,7 @@ async def sync_all(
         new_messages, is_first_msg = await sync_messages(client, db)
         items += len(new_messages)
 
-        await db.complete_sync_run(
-            run_id, "completed", len(students), items, errors
-        )
+        await db.complete_sync_run(run_id, "completed", len(students), items, errors)
 
         return FullSyncResult(
             student_results=student_results,
@@ -261,7 +296,5 @@ async def sync_all(
             is_first_message_sync=is_first_msg,
         )
     except Exception as exc:
-        await db.complete_sync_run(
-            run_id, "failed", 0, items, errors + 1, str(exc)
-        )
+        await db.complete_sync_run(run_id, "failed", 0, items, errors + 1, str(exc))
         raise
