@@ -355,6 +355,80 @@ async def handle_grades_monthly(request: web.Request) -> web.Response:
     return web.json_response(_get_monthly_averages(student, year, months))
 
 
+def _get_lessons_for_ics(
+    student_name: str, days_past: int, days_future: int
+) -> tuple[str, list[dict[str, Any]]]:
+    """Fetch all lessons (not only substitutions) for one student as a list of dicts.
+
+    Returns (student_key, lessons). Empty student_key if student not found.
+    """
+    db = _connect()
+    student_row = db.execute("SELECT key FROM students WHERE name = ?", (student_name,)).fetchone()
+    if not student_row:
+        db.close()
+        return "", []
+
+    today = datetime.now()
+    date_from = (today - timedelta(days=days_past)).strftime("%Y-%m-%d")
+    date_to = (today + timedelta(days=days_future)).strftime("%Y-%m-%d")
+
+    rows = db.execute(
+        "SELECT date, time_from, time_to, subject, teacher, room, group_name, "
+        "annotation, is_extra, sub_teacher, sub_room, sub_type, absence_info, remarks "
+        "FROM schedule WHERE student_key = ? AND date >= ? AND date <= ? "
+        "ORDER BY date ASC, time_from ASC",
+        (student_row["key"], date_from, date_to),
+    ).fetchall()
+    key = student_row["key"]
+    db.close()
+
+    lessons = [
+        {
+            "date": r["date"],
+            "time_from": r["time_from"],
+            "time_to": r["time_to"],
+            "subject": r["subject"],
+            "teacher": r["teacher"],
+            "room": r["room"],
+            "group_name": r["group_name"],
+            "annotation": r["annotation"],
+            "is_extra": bool(r["is_extra"]),
+            "sub_teacher": r["sub_teacher"],
+            "sub_room": r["sub_room"],
+            "sub_type": r["sub_type"],
+            "absence_info": r["absence_info"],
+            "remarks": r["remarks"],
+        }
+        for r in rows
+    ]
+    return key, lessons
+
+
+async def handle_calendar(request: web.Request) -> web.Response:
+    """Serve an RFC 5545 iCalendar feed for one student's schedule."""
+    from vulcan_notify.ics import build_calendar
+
+    student_name = request.match_info["student"]
+    # URL path may be URL-encoded (space -> %20); aiohttp decodes match_info already.
+    days_past = int(request.query.get("past", "30"))
+    days_future = int(request.query.get("future", "60"))
+
+    key, lessons = _get_lessons_for_ics(student_name, days_past, days_future)
+    if not key:
+        return web.Response(status=404, text=f"Unknown student: {student_name}")
+
+    body = build_calendar(student_name, lessons, key)
+    return web.Response(
+        body=body.encode("utf-8"),
+        content_type="text/calendar",
+        charset="utf-8",
+        headers={
+            "Cache-Control": "public, max-age=900",
+            "Content-Disposition": f'inline; filename="{student_name}.ics"',
+        },
+    )
+
+
 async def handle_schedule(request: web.Request) -> web.Response:
     student = request.query.get("student")
     only_subs = request.query.get("only_substitutions", "").lower() in ("1", "true", "yes")
@@ -392,6 +466,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/grades/monthly", handle_grades_monthly)
     app.router.add_get("/api/grades/by-subject", handle_grades_by_subject)
     app.router.add_get("/api/schedule", handle_schedule)
+    app.router.add_get("/calendar/{student}.ics", handle_calendar)
     app.router.add_get("/api/grades", handle_grades)
     app.router.add_get("/api/homework", handle_homework)
     app.router.add_get("/api/messages", handle_messages)
