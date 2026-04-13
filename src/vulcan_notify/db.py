@@ -127,6 +127,15 @@ CREATE TABLE IF NOT EXISTS schedule (
     FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
+CREATE TABLE IF NOT EXISTS mqtt_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    enqueued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    attempts INTEGER DEFAULT 0,
+    last_error TEXT
+);
+
 CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -468,6 +477,37 @@ class Database:
             for r in rows
         ]
 
+    # ── MQTT outbox ──────────────────────────────────────────────────
+
+    async def enqueue_mqtt(self, topic: str, payload: str) -> None:
+        await self.db.execute(
+            "INSERT INTO mqtt_outbox (topic, payload) VALUES (?, ?)",
+            (topic, payload),
+        )
+
+    async def list_mqtt_outbox(self) -> list[dict[str, object]]:
+        cursor = await self.db.execute(
+            "SELECT id, topic, payload, attempts FROM mqtt_outbox ORDER BY id ASC"
+        )
+        rows = await cursor.fetchall()
+        return [{"id": r[0], "topic": r[1], "payload": r[2], "attempts": r[3]} for r in rows]
+
+    async def delete_mqtt_outbox(self, ids: list[int]) -> None:
+        if not ids:
+            return
+        placeholders = ",".join("?" for _ in ids)
+        await self.db.execute(f"DELETE FROM mqtt_outbox WHERE id IN ({placeholders})", ids)
+
+    async def mark_mqtt_outbox_failure(self, ids: list[int], error: str) -> None:
+        if not ids:
+            return
+        placeholders = ",".join("?" for _ in ids)
+        await self.db.execute(
+            f"UPDATE mqtt_outbox SET attempts = attempts + 1, last_error = ? "
+            f"WHERE id IN ({placeholders})",
+            [error, *ids],
+        )
+
     # ── Schedule ─────────────────────────────────────────────────────
 
     async def upsert_lesson(self, student_key: str, lesson: Lesson) -> None:
@@ -500,6 +540,15 @@ class Database:
                 lesson.absence_info,
                 lesson.remarks,
             ),
+        )
+
+    async def delete_lesson(
+        self, student_key: str, date: str, time_from: str, subject: str
+    ) -> None:
+        await self.db.execute(
+            "DELETE FROM schedule WHERE student_key = ? AND date = ? "
+            "AND time_from = ? AND subject = ?",
+            (student_key, date, time_from, subject),
         )
 
     async def get_lessons_for_student(
