@@ -193,13 +193,17 @@ async def sync_student(
     try:
         now = datetime.now()
         # Previous week + next two weeks, expressed as UTC ISO for the API.
-        date_from = (now - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00.000Z")
-        date_to = (now + timedelta(days=14)).strftime("%Y-%m-%dT23:59:59.999Z")
+        date_from_api = (now - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00.000Z")
+        date_to_api = (now + timedelta(days=14)).strftime("%Y-%m-%dT23:59:59.999Z")
+        date_from_local = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        date_to_local = (now + timedelta(days=14)).strftime("%Y-%m-%d")
 
-        lessons = await client.get_schedule(student, date_from, date_to)
+        lessons = await client.get_schedule(student, date_from_api, date_to_api)
 
         if not is_first:
-            result.new_substitutions = await diff_schedule(student, lessons, db)
+            result.new_substitutions = await diff_schedule(
+                student, lessons, db, date_from_local, date_to_local
+            )
 
         for lesson in lessons:
             await db.upsert_lesson(student.key, lesson)

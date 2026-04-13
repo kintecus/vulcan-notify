@@ -13,6 +13,7 @@ from vulcan_notify.config import settings
 from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Lesson, Message
 
 if TYPE_CHECKING:
+    from vulcan_notify.db import Database
     from vulcan_notify.differ import Change
     from vulcan_notify.sync import FullSyncResult
 
@@ -32,6 +33,8 @@ _TOPIC_SEGMENTS = {
     "exam": "exams",
     "homework": "homework",
     "substitution": "substitutions",
+    "cancellation": "cancellations",
+    "addition": "additions",
 }
 
 
@@ -134,22 +137,40 @@ def build_message_payload(msg: Message) -> dict[str, object]:
     }
 
 
-async def publish_changes(result: FullSyncResult) -> None:
-    """Publish all detected changes to MQTT broker.
+async def enqueue_changes(result: FullSyncResult, db: Database) -> None:
+    """Write all detected changes to the persistent MQTT outbox.
 
-    Connects, publishes, and disconnects per sync cycle.
-    Fails gracefully - logs warnings but never crashes the sync.
+    Called during sync — guarantees no notification is lost if the broker
+    is temporarily unreachable. `drain_outbox` ships them to MQTT.
     """
     if not settings.mqtt_enabled:
         return
 
-    changes_count = sum(len(sr.all_changes) for sr in result.student_results) + len(
-        result.new_messages
-    )
+    for sr in result.student_results:
+        if sr.is_first_sync:
+            continue
+        for change in sr.all_changes:
+            await db.enqueue_mqtt(topic_for(change), json.dumps(build_payload(change)))
 
-    if changes_count == 0:
-        return
+    if not result.is_first_message_sync:
+        prefix = settings.mqtt_topic_prefix
+        for msg in result.new_messages:
+            topic = f"{prefix}/{_slugify(msg.mailbox)}/messages/new"
+            await db.enqueue_mqtt(topic, json.dumps(build_message_payload(msg)))
 
+    await db.commit()
+
+
+async def drain_outbox(db: Database) -> tuple[int, int]:
+    """Publish every queued message; drop successes, keep failures. Returns (ok, pending)."""
+    if not settings.mqtt_enabled:
+        return 0, 0
+
+    queue = await db.list_mqtt_outbox()
+    if not queue:
+        return 0, 0
+
+    published_ids: list[int] = []
     try:
         async with aiomqtt.Client(
             hostname=settings.mqtt_broker,
@@ -157,31 +178,35 @@ async def publish_changes(result: FullSyncResult) -> None:
             username=settings.mqtt_username,
             password=settings.mqtt_password,
         ) as client:
-            # Publish per-student changes
-            for sr in result.student_results:
-                if sr.is_first_sync:
-                    continue
-                for change in sr.all_changes:
-                    topic = topic_for(change)
-                    payload = json.dumps(build_payload(change))
-                    await client.publish(topic, payload)
-                    logger.debug("MQTT publish: %s", topic)
-
-            # Publish new messages
-            if not result.is_first_message_sync:
-                prefix = settings.mqtt_topic_prefix
-                for msg in result.new_messages:
-                    topic = f"{prefix}/{_slugify(msg.mailbox)}/messages/new"
-                    payload = json.dumps(build_message_payload(msg))
-                    await client.publish(topic, payload)
-                    logger.debug("MQTT publish: %s", topic)
-
-            logger.info("MQTT: published %d change(s)", changes_count)
-
-    except Exception:
+            for item in queue:
+                await client.publish(str(item["topic"]), str(item["payload"]))
+                published_ids.append(int(item["id"]))
+                logger.debug("MQTT publish: %s", item["topic"])
+    except Exception as exc:
+        failed_ids = [int(i["id"]) for i in queue if int(i["id"]) not in published_ids]
+        await db.mark_mqtt_outbox_failure(failed_ids, f"{type(exc).__name__}: {exc}")
         logger.warning(
-            "MQTT publish failed (broker: %s:%d)",
+            "MQTT publish failed after %d/%d delivered (broker: %s:%d, %d queued for retry)",
+            len(published_ids),
+            len(queue),
             settings.mqtt_broker,
             settings.mqtt_port,
-            exc_info=True,
+            len(failed_ids),
         )
+
+    if published_ids:
+        await db.delete_mqtt_outbox(published_ids)
+        await db.commit()
+        logger.info(
+            "MQTT: published %d change(s), %d pending",
+            len(published_ids),
+            len(queue) - len(published_ids),
+        )
+
+    return len(published_ids), len(queue) - len(published_ids)
+
+
+# Backwards-compatible shim — callers pass the db now; old call sites updated.
+async def publish_changes(result: FullSyncResult, db: Database) -> None:
+    await enqueue_changes(result, db)
+    await drain_outbox(db)

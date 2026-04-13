@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+from vulcan_notify.db import Database
 from vulcan_notify.differ import Change
 from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Message, Student
 from vulcan_notify.mqtt import build_message_payload, build_payload, publish_changes, topic_for
@@ -204,27 +205,28 @@ def test_build_message_payload() -> None:
 # ── publish_changes ──────────────────────────────────────────────
 
 
-async def test_publish_skipped_when_disabled() -> None:
+async def test_publish_skipped_when_disabled(db: Database) -> None:
     result = FullSyncResult(student_results=[])
     with patch("vulcan_notify.mqtt.settings") as mock_settings:
         mock_settings.mqtt_enabled = False
         with patch("vulcan_notify.mqtt.aiomqtt.Client") as mock_client:
-            await publish_changes(result)
+            await publish_changes(result, db)
             mock_client.assert_not_called()
 
 
-async def test_publish_skipped_when_no_changes() -> None:
+async def test_publish_skipped_when_no_changes(db: Database) -> None:
     result = FullSyncResult(
         student_results=[SyncResult(student=STUDENT)],
     )
     with patch("vulcan_notify.mqtt.settings") as mock_settings:
         mock_settings.mqtt_enabled = True
+        mock_settings.mqtt_topic_prefix = "school"
         with patch("vulcan_notify.mqtt.aiomqtt.Client") as mock_client:
-            await publish_changes(result)
+            await publish_changes(result, db)
             mock_client.assert_not_called()
 
 
-async def test_publish_sends_changes() -> None:
+async def test_publish_sends_changes(db: Database) -> None:
     grade_change = _make_change("grade", GRADE)
     sr = SyncResult(student=STUDENT, new_grades=[grade_change])
     result = FullSyncResult(student_results=[sr])
@@ -242,14 +244,16 @@ async def test_publish_sends_changes() -> None:
         mock_settings.mqtt_password = None
         mock_settings.mqtt_topic_prefix = "school"
         with patch("vulcan_notify.mqtt.aiomqtt.Client", return_value=mock_client_ctx):
-            await publish_changes(result)
+            await publish_changes(result, db)
 
     mock_client_instance.publish.assert_called_once()
     call_args = mock_client_instance.publish.call_args
     assert call_args[0][0] == "school/kacper/grades/new"
+    # Outbox drained on success
+    assert await db.list_mqtt_outbox() == []
 
 
-async def test_publish_skips_first_sync() -> None:
+async def test_publish_skips_first_sync(db: Database) -> None:
     grade_change = _make_change("grade", GRADE)
     sr = SyncResult(student=STUDENT, new_grades=[grade_change], is_first_sync=True)
     result = FullSyncResult(student_results=[sr])
@@ -267,12 +271,13 @@ async def test_publish_skips_first_sync() -> None:
         mock_settings.mqtt_password = None
         mock_settings.mqtt_topic_prefix = "school"
         with patch("vulcan_notify.mqtt.aiomqtt.Client", return_value=mock_client_ctx):
-            await publish_changes(result)
+            await publish_changes(result, db)
 
     mock_client_instance.publish.assert_not_called()
 
 
-async def test_publish_graceful_on_connection_failure() -> None:
+async def test_publish_retains_on_failure(db: Database) -> None:
+    """Connection failure leaves items in the outbox for the next sync."""
     grade_change = _make_change("grade", GRADE)
     sr = SyncResult(student=STUDENT, new_grades=[grade_change])
     result = FullSyncResult(student_results=[sr])
@@ -285,5 +290,37 @@ async def test_publish_graceful_on_connection_failure() -> None:
         mock_settings.mqtt_password = None
         mock_settings.mqtt_topic_prefix = "school"
         with patch("vulcan_notify.mqtt.aiomqtt.Client", side_effect=OSError("Connection refused")):
-            # Should not raise
-            await publish_changes(result)
+            await publish_changes(result, db)
+
+    pending = await db.list_mqtt_outbox()
+    assert len(pending) == 1
+    assert pending[0]["topic"] == "school/kacper/grades/new"
+    assert pending[0]["attempts"] == 1
+
+
+async def test_outbox_drains_on_retry(db: Database) -> None:
+    """Items enqueued by a failed run get published on the next successful run."""
+    await db.enqueue_mqtt("school/kacper/grades/new", '{"title":"pending"}')
+    await db.commit()
+
+    mock_client_instance = AsyncMock()
+    mock_client_ctx = AsyncMock()
+    mock_client_ctx.__aenter__ = AsyncMock(return_value=mock_client_instance)
+    mock_client_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("vulcan_notify.mqtt.settings") as mock_settings:
+        mock_settings.mqtt_enabled = True
+        mock_settings.mqtt_broker = "localhost"
+        mock_settings.mqtt_port = 1883
+        mock_settings.mqtt_username = None
+        mock_settings.mqtt_password = None
+        mock_settings.mqtt_topic_prefix = "school"
+        with patch("vulcan_notify.mqtt.aiomqtt.Client", return_value=mock_client_ctx):
+            # No new changes this cycle; drain alone should deliver the pending one
+            empty_result = FullSyncResult(student_results=[SyncResult(student=STUDENT)])
+            await publish_changes(empty_result, db)
+
+    mock_client_instance.publish.assert_called_once_with(
+        "school/kacper/grades/new", '{"title":"pending"}'
+    )
+    assert await db.list_mqtt_outbox() == []

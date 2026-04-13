@@ -134,7 +134,7 @@ async def cmd_sync() -> None:
 
         _print_result(result)
         await _sync_calendar(db)
-        await publish_changes(result)
+        await publish_changes(result, db)
 
     except SessionExpiredError:
         # Try auto-reauth once if it fails mid-sync
@@ -147,7 +147,7 @@ async def cmd_sync() -> None:
             result = await sync_all(client, db)
             _print_result(result)
             await _sync_calendar(db)
-            await publish_changes(result)
+            await publish_changes(result, db)
         else:
             print("Session expired. Run 'vulcan-notify auth' to re-authenticate.")
             print(

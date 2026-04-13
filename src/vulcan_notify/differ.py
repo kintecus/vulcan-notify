@@ -197,21 +197,55 @@ async def diff_schedule(
     student: Student,
     fetched: list[Lesson],
     db: Database,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> list[Change]:
-    """Detect new or changed substitutions in the upcoming schedule.
+    """Detect schedule changes: substitutions, cancellations, extra lessons.
 
-    We only report lessons that are substituted (have zmiany / remarks / annotation).
-    Unchanged regular lessons are stored silently for baselining.
+    Scope is the `(date_from, date_to)` window; stored lessons inside that window
+    that are missing from `fetched` are treated as cancellations and removed
+    from the DB so downstream consumers (ICS feed, /api/schedule) stay accurate.
+
+    - New substituted lesson appears -> "new" substitution
+    - Existing lesson gains/loses substitution or remark -> "updated" substitution
+    - Lesson with `is_extra=True` appears for the first time -> "new" addition
+    - Stored lesson not in fetched set (within window) -> "new" cancellation, row deleted
     """
-    date_from = min((lsn.date for lsn in fetched), default=None)
-    date_to = max((lsn.date for lsn in fetched), default=None)
+    if date_from is None:
+        date_from = min((lsn.date for lsn in fetched), default=None)
+    if date_to is None:
+        date_to = max((lsn.date for lsn in fetched), default=None)
     stored_rows = await db.get_lessons_for_student(student.key, date_from, date_to)
     stored_by_key = {(r["date"], r["time_from"], r["subject"]): r for r in stored_rows}
+    fetched_keys = {(lsn.date, lsn.time_from, lsn.subject) for lsn in fetched}
     changes: list[Change] = []
 
+    # Substitutions + newly added lessons
     for lesson in fetched:
         key = (lesson.date, lesson.time_from, lesson.subject)
         existing = stored_by_key.get(key)
+
+        # Brand-new "extra" lesson (dodatkowe) - notify even without substitution
+        if existing is None and lesson.is_extra and not lesson.is_substituted:
+            changes.append(
+                Change(
+                    change_type="new",
+                    item_type="addition",
+                    student_name=student.name,
+                    title=f"Extra lesson added: {lesson.subject} ({lesson.date})",
+                    body=(
+                        f"Date: {lesson.date}\n"
+                        f"Time: {lesson.time_from[11:16]}-{lesson.time_to[11:16]}\n"
+                        f"Subject: {lesson.subject}\n"
+                        f"Teacher: {lesson.teacher}\n"
+                        f"Room: {lesson.room or '?'}"
+                    ),
+                    priority=4,
+                    tags=["sparkles", "school"],
+                    raw=lesson,
+                )
+            )
+            continue
 
         if not lesson.is_substituted:
             continue
@@ -243,6 +277,38 @@ async def diff_schedule(
                 raw=lesson,
             )
         )
+
+    # Cancellations: stored-but-not-fetched inside the window
+    for key, row in stored_by_key.items():
+        if key in fetched_keys:
+            continue
+        date, time_from, subject = key
+        time_to = str(row.get("time_to") or "")
+        teacher = str(row.get("teacher") or "")
+        room = str(row.get("room") or "")
+        body_lines = [
+            f"Date: {date}",
+            f"Time: {time_from[11:16]}-{time_to[11:16]}"
+            if time_to
+            else f"Time: {time_from[11:16]}",
+            f"Subject: {subject}",
+        ]
+        if teacher:
+            body_lines.append(f"Teacher: {teacher}")
+        if room:
+            body_lines.append(f"Room: {room}")
+        changes.append(
+            Change(
+                change_type="new",
+                item_type="cancellation",
+                student_name=student.name,
+                title=f"Lesson cancelled: {subject} ({date})",
+                body="\n".join(body_lines),
+                priority=4,
+                tags=["x", "school"],
+            )
+        )
+        await db.delete_lesson(student.key, date, time_from, subject)
 
     return changes
 
