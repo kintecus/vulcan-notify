@@ -195,10 +195,18 @@ async def sync_student(
         # Previous week + next two weeks, expressed as UTC ISO for the API.
         date_from_api = (now - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00.000Z")
         date_to_api = (now + timedelta(days=14)).strftime("%Y-%m-%dT23:59:59.999Z")
-        date_from_local = (now - timedelta(days=7)).strftime("%Y-%m-%d")
-        date_to_local = (now + timedelta(days=14)).strftime("%Y-%m-%d")
 
         lessons = await client.get_schedule(student, date_from_api, date_to_api)
+
+        # Anchor the diff window to the fetched lessons' actual local-date range
+        # so that timezone drift in the UTC API window doesn't park a lesson
+        # outside the DB lookup and resurrect it as "new" on every sync.
+        if lessons:
+            date_from_local = min(lesson.date for lesson in lessons)
+            date_to_local = max(lesson.date for lesson in lessons)
+        else:
+            date_from_local = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+            date_to_local = (now + timedelta(days=14)).strftime("%Y-%m-%d")
 
         if not is_first:
             result.new_substitutions = await diff_schedule(
