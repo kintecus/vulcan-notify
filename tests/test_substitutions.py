@@ -112,6 +112,35 @@ async def test_diff_schedule_flags_extra_lesson(db: Database) -> None:
     assert "Extra lesson added: Club" in changes[0].title
 
 
+async def test_diff_schedule_does_not_refire_extra_lesson(db: Database) -> None:
+    """Regression: an extra lesson that's already in DB must not re-notify.
+
+    This caught a bug where the diff window excluded a date that the fetched
+    set included (timezone drift between UTC API params and local date strings),
+    so the stored row appeared "missing" and the extra-lesson path fired again.
+    """
+    await db.upsert_student(STUDENT)
+    extra = Lesson(
+        date="2026-04-28",
+        time_from="2026-04-28T08:00:00+02:00",
+        time_to="2026-04-28T08:45:00+02:00",
+        subject="..",
+        teacher="Duda Lucyna",
+        room="",
+        group=None,
+        annotation=0,
+        is_extra=True,
+    )
+    await db.upsert_lesson(STUDENT.key, extra)
+
+    # Second sync: fetched set still includes the same lesson, diff window
+    # matches that date range exactly.
+    changes = await diff_schedule(
+        STUDENT, [extra], db, date_from="2026-04-28", date_to="2026-04-28"
+    )
+    assert changes == []
+
+
 async def test_diff_schedule_ignores_missing_lessons_outside_window(db: Database) -> None:
     """Stored lessons outside the diff window aren't flagged as cancelled."""
     await db.upsert_student(STUDENT)

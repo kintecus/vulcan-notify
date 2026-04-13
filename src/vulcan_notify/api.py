@@ -333,7 +333,7 @@ def _get_messages(n: int = 20) -> list[dict[str, Any]]:
     db = _connect()
     messages = []
     for m in db.execute(
-        "SELECT sender, subject, date, content FROM messages ORDER BY date DESC LIMIT ?",
+        "SELECT sender, subject, date, mailbox, content FROM messages ORDER BY date DESC LIMIT ?",
         (n,),
     ):
         messages.append(dict(m))
