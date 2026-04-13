@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from typing import TYPE_CHECKING
+
+from vulcan_notify.text import strip_html
 
 if TYPE_CHECKING:
     from vulcan_notify.differ import Change
@@ -39,17 +40,6 @@ def format_change(change: Change) -> str:
     return f"    {prefix} {change.title}"
 
 
-def _strip_html(html: str) -> str:
-    """Minimal HTML-to-text: strip tags, decode entities, collapse whitespace."""
-    text = re.sub(r"<br\s*/?>", "\n", html)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = text.replace("&nbsp;", " ").replace("&amp;", "&")
-    text = text.replace("&lt;", "<").replace("&gt;", ">")
-    # Collapse multiple blank lines
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
 def _format_sender_short(sender: str) -> str:
     """Shorten sender like 'Smith Anna - P - (SCHOOL)' to 'Smith A.'."""
     parts = sender.split(" - ")
@@ -71,7 +61,7 @@ def format_message(msg: Message, show_content: bool = True) -> list[str]:
             kid_name = mailbox_parts[2].strip().split(" - ")[0]
             lines[0] += f" {DIM}[{kid_name}]{RESET}"
     if show_content and msg.content:
-        text = _strip_html(msg.content)
+        text = strip_html(msg.content)
         # Show first 200 chars of content
         preview = text[:200]
         if len(text) > 200:

@@ -681,6 +681,20 @@ class Database:
             (content, message_id),
         )
 
+    async def get_messages_missing_content(self, limit: int) -> list[tuple[int, str]]:
+        """Return (id, api_global_key) for messages whose body wasn't fetched yet.
+
+        Oldest-to-newest so the backfill chips away at the historical backlog
+        in a stable order.
+        """
+        cursor = await self.db.execute(
+            "SELECT id, api_global_key FROM messages "
+            "WHERE content IS NULL AND api_global_key IS NOT NULL AND api_global_key != '' "
+            "ORDER BY date ASC LIMIT ?",
+            (limit,),
+        )
+        return [(r[0], r[1]) for r in await cursor.fetchall()]
+
     # ── Recent changes (for AI summarization) ───────────────────────
 
     async def get_recent_changes(self, days: int = 1) -> dict[str, list[dict[str, object]]]:

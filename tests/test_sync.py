@@ -9,9 +9,10 @@ from vulcan_notify.models import (
     Exam,
     Grade,
     Homework,
+    Message,
     Student,
 )
-from vulcan_notify.sync import sync_all, sync_student
+from vulcan_notify.sync import sync_all, sync_messages, sync_student
 
 STUDENT_A = Student(
     key="KEYA",
@@ -168,3 +169,33 @@ async def test_sync_all_no_students(db: Database) -> None:
     client = _make_mock_client(students=[])
     full = await sync_all(client, db)
     assert full.student_results == []
+
+
+async def test_sync_messages_backfills_legacy_content(db: Database) -> None:
+    """Messages stored before detail-fetch was added get content backfilled."""
+    # Seed a legacy message row directly: content NULL, api_global_key present.
+    legacy = Message(
+        id=9001,
+        api_global_key="legacy-key",
+        sender="Teacher A.",
+        subject="Old note",
+        date="2026-03-01",
+        mailbox="Jan",
+        has_attachments=False,
+        is_read=True,
+    )
+    await db.upsert_message(legacy)
+    await db.commit()
+    # Mark "messages" as not-first-sync so we only exercise the backfill branch.
+    await db.set_state("last_sync:messages", "2026-03-01T00:00:00")
+
+    client = _make_mock_client()
+    client.get_messages = AsyncMock(return_value=[])  # no new messages
+    client.get_message_detail = AsyncMock(return_value="<p>Backfilled body.</p>")
+
+    await sync_messages(client, db)
+
+    client.get_message_detail.assert_awaited_with("legacy-key")
+    cursor = await db.db.execute("SELECT content FROM messages WHERE id = 9001")
+    row = await cursor.fetchone()
+    assert row[0] == "<p>Backfilled body.</p>"

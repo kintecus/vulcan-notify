@@ -11,6 +11,7 @@ import aiomqtt
 
 from vulcan_notify.config import settings
 from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Lesson, Message
+from vulcan_notify.text import strip_html
 
 if TYPE_CHECKING:
     from vulcan_notify.db import Database
@@ -123,13 +124,24 @@ def build_payload(change: Change) -> dict[str, object]:
     return base
 
 
+_PREVIEW_CHARS = 200
+
+
 def build_message_payload(msg: Message) -> dict[str, object]:
     """Build a structured JSON payload for a new message."""
+    body_text = strip_html(msg.content) if msg.content else ""
+    preview = body_text[:_PREVIEW_CHARS]
+    if len(body_text) > _PREVIEW_CHARS:
+        preview += "…"
+    message_field = f"Subject: {msg.subject}"
+    if preview:
+        message_field += f"\n\n{preview}"
     return {
         "title": f"Message from {msg.sender}",
-        "message": f"Subject: {msg.subject}",
+        "message": message_field,
         "sender": msg.sender,
         "subject": msg.subject,
+        "body": body_text,
         "date": msg.date,
         "mailbox": msg.mailbox,
         "has_attachments": msg.has_attachments,
@@ -186,22 +198,25 @@ async def drain_outbox(db: Database) -> tuple[int, int]:
         failed_ids = [int(i["id"]) for i in queue if int(i["id"]) not in published_ids]
         await db.mark_mqtt_outbox_failure(failed_ids, f"{type(exc).__name__}: {exc}")
         logger.warning(
-            "MQTT publish failed after %d/%d delivered (broker: %s:%d, %d queued for retry)",
+            "MQTT publish failed after %d/%d delivered (broker: %s:%d, %d queued for retry): %s",
             len(published_ids),
             len(queue),
             settings.mqtt_broker,
             settings.mqtt_port,
             len(failed_ids),
+            exc,
         )
 
     if published_ids:
         await db.delete_mqtt_outbox(published_ids)
-        await db.commit()
         logger.info(
             "MQTT: published %d change(s), %d pending",
             len(published_ids),
             len(queue) - len(published_ids),
         )
+
+    # Always commit: deletes for successes AND attempt/error bumps for failures.
+    await db.commit()
 
     return len(published_ids), len(queue) - len(published_ids)
 
