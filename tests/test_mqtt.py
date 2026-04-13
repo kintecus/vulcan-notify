@@ -199,7 +199,51 @@ def test_build_message_payload() -> None:
     assert payload["date"] == "2026-04-07"
     assert payload["mailbox"] == "Kacper"
     assert payload["has_attachments"] is False
+    assert payload["body"] == ""
     assert "timestamp" in payload
+
+
+def test_build_message_payload_includes_body_preview() -> None:
+    msg = Message(
+        id=501,
+        api_global_key="abc-123",
+        sender="Kowalska A.",
+        subject="Informacja",
+        date="2026-04-07",
+        mailbox="Kacper",
+        has_attachments=False,
+        is_read=False,
+        content="<p>Hello <b>parents</b>,</p><br/>Please remember the trip tomorrow.",
+    )
+    payload = build_message_payload(msg)
+
+    assert payload["body"] == "Hello parents,\nPlease remember the trip tomorrow."
+    message_text = str(payload["message"])
+    assert message_text.startswith("Subject: Informacja")
+    assert "Hello parents,\nPlease remember the trip tomorrow." in message_text
+
+
+def test_build_message_payload_truncates_long_body() -> None:
+    long_body = "a" * 500
+    msg = Message(
+        id=502,
+        api_global_key="abc-123",
+        sender="Kowalska A.",
+        subject="Informacja",
+        date="2026-04-07",
+        mailbox="Kacper",
+        has_attachments=False,
+        is_read=False,
+        content=long_body,
+    )
+    payload = build_message_payload(msg)
+
+    assert payload["body"] == long_body  # full text preserved on the `body` field
+    message_text = str(payload["message"])
+    preview_segment = message_text.split("\n\n", 1)[1]
+    # Preview should be 200 chars + ellipsis marker
+    assert preview_segment.rstrip("…") == "a" * 200
+    assert preview_segment.endswith("…")
 
 
 # ── publish_changes ──────────────────────────────────────────────

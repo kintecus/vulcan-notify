@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # Sync
     sync_attendance_days: int = 90  # how far back to sync attendance
+    sync_message_backfill_batch: int = 10  # messages to backfill per cycle
 
     # Polling
     poll_interval: int = 300  # seconds
