@@ -122,6 +122,11 @@ def format_full_sync(
                 for change in sr.new_homework:
                     lines.append(format_change(change))
 
+            if sr.new_substitutions:
+                lines.append(f"  {BOLD}Substitutions:{RESET}")
+                for change in sr.new_substitutions:
+                    lines.append(format_change(change))
+
         lines.append("")
 
     # Messages section
@@ -164,6 +169,8 @@ def format_compact_sync(
             counts.append(f"{len(sr.new_exams)} exams")
         if sr.new_homework:
             counts.append(f"{len(sr.new_homework)} homework")
+        if sr.new_substitutions:
+            counts.append(f"{len(sr.new_substitutions)} substitutions")
         if counts:
             parts.append(f"{sr.student.name}: {', '.join(counts)}")
 

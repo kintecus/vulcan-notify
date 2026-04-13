@@ -17,6 +17,7 @@ from vulcan_notify.models import (
     Exam,
     Grade,
     Homework,
+    Lesson,
     Message,
     Student,
 )
@@ -277,13 +278,9 @@ class VulcanClient:
             return None
         return dict(data)
 
-    async def get_exam_detail(
-        self, student: Student, exam_id: int
-    ) -> dict[str, Any] | None:
+    async def get_exam_detail(self, student: Student, exam_id: int) -> dict[str, Any] | None:
         """Fetch exam detail (description, teacher)."""
-        data = await self._request(
-            f"/api/SprawdzianSzczegoly?key={student.key}&id={exam_id}"
-        )
+        data = await self._request(f"/api/SprawdzianSzczegoly?key={student.key}&id={exam_id}")
         if not data or not isinstance(data, dict):
             return None
         return dict(data)
@@ -328,6 +325,52 @@ class VulcanClient:
             announcements=safe_result(results[4], []),
             unread_messages=unread_count,
         )
+
+    # ── Schedule (Plan zajęć) ────────────────────────────────────────
+
+    async def get_schedule(
+        self,
+        student: Student,
+        date_from: str,
+        date_to: str,
+    ) -> list[Lesson]:
+        """Fetch the lesson schedule with substitutions for a date range.
+
+        date_from/date_to are ISO-8601 UTC datetimes as expected by the API
+        (e.g. `2026-03-31T22:00:00.000Z` for local midnight in Europe/Warsaw).
+        """
+        data = await self._request(
+            f"/api/PlanZajec?key={student.key}&dataOd={date_from}&dataDo={date_to}&zakresDanych=2"
+        )
+        if not data:
+            return []
+
+        lessons: list[Lesson] = []
+        for entry in data:
+            raw_date = entry.get("data", "")
+            iso_date = raw_date[:10]  # "YYYY-MM-DD..." prefix
+            zmiany = entry.get("zmiany") or []
+            uwagi = entry.get("zmianyUwagi") or []
+            sub = zmiany[0] if zmiany else {}
+            lessons.append(
+                Lesson(
+                    date=iso_date,
+                    time_from=entry.get("godzinaOd", ""),
+                    time_to=entry.get("godzinaDo", ""),
+                    subject=entry.get("przedmiot", ""),
+                    teacher=entry.get("prowadzacy", ""),
+                    room=entry.get("sala", "") or "",
+                    group=entry.get("podzial") or None,
+                    annotation=entry.get("adnotacja", 0) or 0,
+                    is_extra=bool(entry.get("dodatkowe")),
+                    sub_teacher=(sub.get("prowadzacy") or None) if sub else None,
+                    sub_room=(sub.get("sala") or None) if sub else None,
+                    sub_type=sub.get("zmiana") if sub else None,
+                    absence_info=sub.get("informacjeNieobecnosc") if sub else None,
+                    remarks="; ".join(str(u) for u in uwagi) if uwagi else None,
+                )
+            )
+        return lessons
 
     # ── Messages (wiadomosci.eduvulcan.pl) ───────────────────────────
 

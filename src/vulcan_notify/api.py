@@ -223,6 +223,67 @@ def _get_subject_averages(student_filter: str | None = None) -> dict[str, Any]:
     return result
 
 
+def _get_schedule(
+    student_filter: str | None = None,
+    only_substitutions: bool = False,
+    days_ahead: int = 14,
+) -> dict[str, Any]:
+    """Return upcoming lessons per student, newest first.
+
+    With `only_substitutions=True`, returns only lessons where a substitution
+    has been recorded.
+    """
+    db = _connect()
+    result: dict[str, Any] = {}
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    to_date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+
+    query = "SELECT key, name FROM students"
+    params: tuple[str, ...] = ()
+    if student_filter:
+        query += " WHERE name = ?"
+        params = (student_filter,)
+
+    for s in db.execute(query, params):
+        sql = (
+            "SELECT date, time_from, time_to, subject, teacher, room, group_name, "
+            "annotation, is_extra, sub_teacher, sub_room, sub_type, absence_info, remarks "
+            "FROM schedule WHERE student_key = ? AND date >= ? AND date <= ?"
+        )
+        row_params: list[object] = [s["key"], today, to_date]
+        if only_substitutions:
+            sql += (
+                " AND (sub_teacher IS NOT NULL OR (sub_room IS NOT NULL AND sub_room != '') "
+                "OR remarks IS NOT NULL OR annotation != 0)"
+            )
+        sql += " ORDER BY date ASC, time_from ASC"
+
+        rows = db.execute(sql, row_params).fetchall()
+        lessons = [
+            {
+                "date": r["date"],
+                "time_from": r["time_from"],
+                "time_to": r["time_to"],
+                "subject": r["subject"],
+                "teacher": r["teacher"],
+                "room": r["room"],
+                "group": r["group_name"],
+                "is_extra": bool(r["is_extra"]),
+                "sub_teacher": r["sub_teacher"],
+                "sub_room": r["sub_room"],
+                "sub_type": r["sub_type"],
+                "absence_info": r["absence_info"],
+                "remarks": r["remarks"],
+            }
+            for r in rows
+        ]
+        result[s["name"]] = {"lessons": lessons, "count": len(lessons)}
+
+    db.close()
+    return result
+
+
 def _get_grades(n: int = 5) -> dict[str, Any]:
     """Read latest N grades per student from the database."""
     db = _connect()
@@ -294,6 +355,13 @@ async def handle_grades_monthly(request: web.Request) -> web.Response:
     return web.json_response(_get_monthly_averages(student, year, months))
 
 
+async def handle_schedule(request: web.Request) -> web.Response:
+    student = request.query.get("student")
+    only_subs = request.query.get("only_substitutions", "").lower() in ("1", "true", "yes")
+    days = int(request.query.get("days", "14"))
+    return web.json_response(_get_schedule(student, only_subs, days))
+
+
 async def handle_grades_by_subject(request: web.Request) -> web.Response:
     student = request.query.get("student")
     return web.json_response(_get_subject_averages(student))
@@ -323,6 +391,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/grades/average", handle_grades_average)
     app.router.add_get("/api/grades/monthly", handle_grades_monthly)
     app.router.add_get("/api/grades/by-subject", handle_grades_by_subject)
+    app.router.add_get("/api/schedule", handle_schedule)
     app.router.add_get("/api/grades", handle_grades)
     app.router.add_get("/api/homework", handle_homework)
     app.router.add_get("/api/messages", handle_messages)
