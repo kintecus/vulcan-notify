@@ -269,7 +269,34 @@ School holidays/days off.
 
 ### GET /api/PlanZajecTablica?key={key}
 
-Today's schedule.
+Today's schedule. Returns a list of lesson dicts (see `PlanZajec` below for field details). Despite accepting `data=` / `dataOd=` / `dataDo=` query params, it **ignores them** and always returns the current day. Use `PlanZajec` for any range other than today.
+
+### GET /api/PlanZajec?key={key}&dataOd={isoDatetimeUtc}&dataDo={isoDatetimeUtc}&zakresDanych=2
+
+Schedule across a date range — the endpoint used by the web app's "Plan zajęć" week/month view. Includes substitutions (`zastępstwa`).
+
+- `dataOd` / `dataDo`: full ISO-8601 UTC datetimes (e.g. `2026-03-31T22:00:00.000Z`), framing local-time midnight-to-midnight in Europe/Warsaw.
+- `zakresDanych=2`: required; the web app always sends 2 for this view.
+
+Response: list of lesson dicts with keys:
+
+- `data` / `godzinaOd` / `godzinaDo` — local-timezone ISO datetimes
+- `prowadzacy`, `prowadzacyWspomagajacy1`, `prowadzacyWspomagajacy2` — teacher + up to two assistants
+- `przedmiot` — subject name
+- `podzial` — group label (e.g. `BS` for pool group), nullable
+- `sala` — room
+- `pseudonim` — nullable nickname
+- `adnotacja` — int flag; non-zero means the lesson has changes/annotations
+- `dodatkowe` — bool; extra/added lesson
+- `zrealizowane` — bool; lesson already took place
+- `idJednostkaSkladowa` — school unit id
+- `zmiany` — list of substitution entries (empty when no change):
+  - `zmiana` — change type code (e.g. 7 for teacher swap)
+  - `typProwadzacego` — teacher-type flag
+  - `prowadzacy` — replacement teacher name
+  - `sala` — replacement room (may be empty string)
+  - `dzien`, `nrLekcji`, `godzinaOd`, `godzinaDo`, `grupa`, `zajecia`, `informacjeNieobecnosc` — nullable overrides for reschedules/absences
+- `zmianyUwagi` — list of free-text remarks about the change
 
 ### GET /api/KomunikatStartowy
 
