@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import aiomqtt
 
 from vulcan_notify.config import settings
-from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Message
+from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Lesson, Message
 
 if TYPE_CHECKING:
     from vulcan_notify.differ import Change
@@ -31,6 +31,7 @@ _TOPIC_SEGMENTS = {
     "attendance": "attendance",
     "exam": "exams",
     "homework": "homework",
+    "substitution": "substitutions",
 }
 
 
@@ -101,6 +102,21 @@ def build_payload(change: Change) -> dict[str, object]:
             teacher=raw.teacher,
         )
 
+    elif isinstance(raw, Lesson):
+        base.update(
+            subject=raw.subject,
+            date=raw.date,
+            time_from=raw.time_from,
+            time_to=raw.time_to,
+            original_teacher=raw.teacher,
+            original_room=raw.room,
+            sub_teacher=raw.sub_teacher,
+            sub_room=raw.sub_room,
+            sub_type=raw.sub_type,
+            absence_info=raw.absence_info,
+            remarks=raw.remarks,
+        )
+
     return base
 
 
@@ -127,9 +143,9 @@ async def publish_changes(result: FullSyncResult) -> None:
     if not settings.mqtt_enabled:
         return
 
-    changes_count = sum(
-        len(sr.all_changes) for sr in result.student_results
-    ) + len(result.new_messages)
+    changes_count = sum(len(sr.all_changes) for sr in result.student_results) + len(
+        result.new_messages
+    )
 
     if changes_count == 0:
         return

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         Exam,
         Grade,
         Homework,
+        Lesson,
         Message,
         Student,
     )
@@ -102,6 +103,28 @@ CREATE TABLE IF NOT EXISTS messages (
     is_read BOOLEAN DEFAULT 0,
     content TEXT,
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS schedule (
+    student_key TEXT NOT NULL,
+    date TEXT NOT NULL,
+    time_from TEXT NOT NULL,
+    time_to TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    teacher TEXT NOT NULL,
+    room TEXT,
+    group_name TEXT,
+    annotation INTEGER DEFAULT 0,
+    is_extra BOOLEAN DEFAULT 0,
+    sub_teacher TEXT,
+    sub_room TEXT,
+    sub_type INTEGER,
+    absence_info TEXT,
+    remarks TEXT,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_key, date, time_from, subject),
+    FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -235,10 +258,7 @@ class Database:
             "SELECT key, name, class_name, school FROM students ORDER BY name"
         )
         rows = await cursor.fetchall()
-        return [
-            {"key": r[0], "name": r[1], "class_name": r[2], "school": r[3]}
-            for r in rows
-        ]
+        return [{"key": r[0], "name": r[1], "class_name": r[2], "school": r[3]} for r in rows]
 
     # ── Grades ───────────────────────────────────────────────────────
 
@@ -341,8 +361,13 @@ class Database:
             "teacher=COALESCE(excluded.teacher, exams.teacher), "
             "last_seen=CURRENT_TIMESTAMP, deleted_at=NULL",
             (
-                exam.id, student_key, exam.date, exam.subject,
-                exam.type, exam.description, exam.teacher,
+                exam.id,
+                student_key,
+                exam.date,
+                exam.subject,
+                exam.type,
+                exam.description,
+                exam.teacher,
             ),
         )
 
@@ -442,6 +467,79 @@ class Database:
             }
             for r in rows
         ]
+
+    # ── Schedule ─────────────────────────────────────────────────────
+
+    async def upsert_lesson(self, student_key: str, lesson: Lesson) -> None:
+        await self.db.execute(
+            "INSERT INTO schedule (student_key, date, time_from, time_to, subject, teacher, "
+            "room, group_name, annotation, is_extra, sub_teacher, sub_room, sub_type, "
+            "absence_info, remarks) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(student_key, date, time_from, subject) DO UPDATE SET "
+            "time_to=excluded.time_to, teacher=excluded.teacher, room=excluded.room, "
+            "group_name=excluded.group_name, annotation=excluded.annotation, "
+            "is_extra=excluded.is_extra, sub_teacher=excluded.sub_teacher, "
+            "sub_room=excluded.sub_room, sub_type=excluded.sub_type, "
+            "absence_info=excluded.absence_info, remarks=excluded.remarks, "
+            "last_seen=CURRENT_TIMESTAMP",
+            (
+                student_key,
+                lesson.date,
+                lesson.time_from,
+                lesson.time_to,
+                lesson.subject,
+                lesson.teacher,
+                lesson.room,
+                lesson.group,
+                lesson.annotation,
+                lesson.is_extra,
+                lesson.sub_teacher,
+                lesson.sub_room,
+                lesson.sub_type,
+                lesson.absence_info,
+                lesson.remarks,
+            ),
+        )
+
+    async def get_lessons_for_student(
+        self,
+        student_key: str,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> list[dict[str, object]]:
+        query = (
+            "SELECT date, time_from, time_to, subject, teacher, room, group_name, "
+            "annotation, is_extra, sub_teacher, sub_room, sub_type, absence_info, remarks "
+            "FROM schedule WHERE student_key = ?"
+        )
+        params: list[object] = [student_key]
+        if date_from:
+            query += " AND date >= ?"
+            params.append(date_from)
+        if date_to:
+            query += " AND date <= ?"
+            params.append(date_to)
+        query += " ORDER BY date ASC, time_from ASC"
+        cursor = await self.db.execute(query, params)
+        rows = await cursor.fetchall()
+        cols = (
+            "date",
+            "time_from",
+            "time_to",
+            "subject",
+            "teacher",
+            "room",
+            "group_name",
+            "annotation",
+            "is_extra",
+            "sub_teacher",
+            "sub_room",
+            "sub_type",
+            "absence_info",
+            "remarks",
+        )
+        return [dict(zip(cols, r, strict=True)) for r in rows]
 
     # ── Messages ─────────────────────────────────────────────────────
 
@@ -603,8 +701,7 @@ class Database:
         rows = await cursor.fetchall()
         if rows:
             result["exams"] = [
-                {"student": r[0], "subject": r[1], "date": r[2], "type": r[3]}
-                for r in rows
+                {"student": r[0], "subject": r[1], "date": r[2], "type": r[3]} for r in rows
             ]
 
         # Homework
@@ -617,17 +714,13 @@ class Database:
         )
         rows = await cursor.fetchall()
         if rows:
-            result["homework"] = [
-                {"student": r[0], "subject": r[1], "date": r[2]} for r in rows
-            ]
+            result["homework"] = [{"student": r[0], "subject": r[1], "date": r[2]} for r in rows]
 
         return result
 
     # ── Soft deletes ─────────────────────────────────────────────────
 
-    async def mark_missing(
-        self, student_key: str, table: str, current_ids: set[int]
-    ) -> int:
+    async def mark_missing(self, student_key: str, table: str, current_ids: set[int]) -> int:
         """Mark items not in current_ids as soft-deleted. Returns count."""
         if table not in ("exams", "homework"):
             raise ValueError(f"Soft deletes not supported for table: {table}")
@@ -659,9 +752,7 @@ class Database:
             (item_id,),
         )
 
-    async def get_items_for_calendar(
-        self, student_key: str
-    ) -> dict[str, list[dict[str, object]]]:
+    async def get_items_for_calendar(self, student_key: str) -> dict[str, list[dict[str, object]]]:
         """Return active exams and homework for calendar sync."""
         result: dict[str, list[dict[str, object]]] = {}
 
@@ -672,8 +763,13 @@ class Database:
         )
         result["exams"] = [
             {
-                "id": r[0], "date": r[1], "subject": r[2], "type": r[3],
-                "description": r[4], "teacher": r[5], "calendar_uid": r[6],
+                "id": r[0],
+                "date": r[1],
+                "subject": r[2],
+                "type": r[3],
+                "description": r[4],
+                "teacher": r[5],
+                "calendar_uid": r[6],
             }
             for r in await cursor.fetchall()
         ]
@@ -685,8 +781,12 @@ class Database:
         )
         result["homework"] = [
             {
-                "id": r[0], "date": r[1], "subject": r[2],
-                "content": r[3], "teacher": r[4], "calendar_uid": r[5],
+                "id": r[0],
+                "date": r[1],
+                "subject": r[2],
+                "content": r[3],
+                "teacher": r[4],
+                "calendar_uid": r[5],
             }
             for r in await cursor.fetchall()
         ]
@@ -706,10 +806,7 @@ class Database:
                 "AND calendar_uid IS NOT NULL",
                 (student_key,),
             )
-            result[table] = [
-                {"id": r[0], "calendar_uid": r[1]}
-                for r in await cursor.fetchall()
-            ]
+            result[table] = [{"id": r[0], "calendar_uid": r[1]} for r in await cursor.fetchall()]
 
         return result
 
