@@ -73,6 +73,58 @@ async def test_diff_schedule_flags_brand_new_substituted_lesson(db: Database) ->
     assert changes[0].change_type == "new"
 
 
+async def test_diff_schedule_flags_cancellation(db: Database) -> None:
+    """A stored lesson that disappears from the fetched set is a cancellation."""
+    await db.upsert_student(STUDENT)
+    stored = make_lesson(subject="Matematyka")
+    await db.upsert_lesson(STUDENT.key, stored)
+
+    # Next fetch returns empty — lesson was cancelled
+    changes = await diff_schedule(STUDENT, [], db, date_from="2026-04-15", date_to="2026-04-15")
+    assert len(changes) == 1
+    assert changes[0].item_type == "cancellation"
+    assert "Matematyka" in changes[0].title
+
+    # Row was deleted so it won't re-fire on next sync
+    remaining = await db.get_lessons_for_student(STUDENT.key)
+    assert remaining == []
+
+
+async def test_diff_schedule_flags_extra_lesson(db: Database) -> None:
+    """A new lesson with is_extra=True gets an 'addition' notification."""
+    await db.upsert_student(STUDENT)
+    extra = Lesson(
+        date="2026-04-15",
+        time_from="2026-04-15T14:00:00+02:00",
+        time_to="2026-04-15T14:45:00+02:00",
+        subject="Club",
+        teacher="Nowak",
+        room="5",
+        group=None,
+        annotation=0,
+        is_extra=True,
+    )
+    changes = await diff_schedule(
+        STUDENT, [extra], db, date_from="2026-04-15", date_to="2026-04-15"
+    )
+    assert len(changes) == 1
+    assert changes[0].item_type == "addition"
+    assert "Extra lesson added: Club" in changes[0].title
+
+
+async def test_diff_schedule_ignores_missing_lessons_outside_window(db: Database) -> None:
+    """Stored lessons outside the diff window aren't flagged as cancelled."""
+    await db.upsert_student(STUDENT)
+    stored = make_lesson()  # date 2026-04-15
+    await db.upsert_lesson(STUDENT.key, stored)
+
+    changes = await diff_schedule(STUDENT, [], db, date_from="2026-05-01", date_to="2026-05-07")
+    assert changes == []
+    # Lesson not deleted
+    remaining = await db.get_lessons_for_student(STUDENT.key)
+    assert len(remaining) == 1
+
+
 async def test_sync_student_persists_and_reports(db: Database) -> None:
     # First sync: baseline, no reports
     client = AsyncMock()
