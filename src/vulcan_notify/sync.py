@@ -258,6 +258,19 @@ async def sync_messages(
         except Exception:
             logger.exception("Failed to fetch message detail for %d", msg.id)
 
+    # Backfill historical messages missing content, bounded per cycle to
+    # avoid hammering the upstream API. Safe to re-run; idempotent.
+    backfill = await db.get_messages_missing_content(limit=settings.sync_message_backfill_batch)
+    for msg_id, api_key in backfill:
+        try:
+            content = await client.get_message_detail(api_key)
+            if content:
+                await db.update_message_content(msg_id, content)
+        except Exception:
+            logger.exception("Failed to backfill message detail for %d", msg_id)
+    if backfill:
+        logger.info("Backfilled content for %d message(s)", len(backfill))
+
     await db.set_state("last_sync:messages", datetime.now().isoformat())
     await db.commit()
 
