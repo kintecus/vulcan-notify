@@ -1,19 +1,28 @@
 # vulcan-notify
 
-CLI tool that syncs data from the eduVulcan school e-journal to a local SQLite database and shows what changed since the last sync.
+CLI tool that syncs data from the eduVulcan school e-journal to a local SQLite database, detects changes between runs, and fans them out to a terminal, macOS Calendar, an MQTT broker, and an HTTP/iCalendar API.
 
-Solves the problem of eduVulcan paywalling push notifications behind a subscription, while the web version (which is legally required to remain free) has no notification support.
+Solves the problem of eduVulcan paywalling push notifications behind a subscription, while the web version (which is legally required to remain free) has no notification support. Also exposes a local HTTP + MQTT surface so Home Assistant (or anything else) can react to school events in real time.
 
 ## What it tracks
 
-- **Grades** - new and changed, with subject, teacher, and category
-- **Attendance** - absences, late arrivals
+- **Grades** - new and changed, with subject, teacher, category, and weight
+- **Attendance** - absences and late arrivals
 - **Exams** - upcoming tests and quizzes, with description and teacher
-- **Homework** - upcoming assignments, with full description and teacher
-- **Messages** - unread count, with optional sender whitelist filtering
-- **iCloud Calendar** - pushes exams and homework to macOS Calendar (optional)
+- **Homework** - upcoming assignments, with full description
+- **Messages** - unread count and body, with optional sender whitelist filtering
+- **Lesson schedule** - substitutions, cancellations, and extra lessons
 
 Supports multiple students under one parent account.
+
+## What it exposes
+
+- **Terminal output** - colored when interactive, plain when piped
+- **macOS Calendar** - exams and homework as all-day events with reminders (iCloud syncs to iOS)
+- **MQTT events** - every detected change published to Mosquitto (with a persistent outbox for retries)
+- **HTTP API** - grade aggregates, homework, messages, and schedule over aiohttp on port 8585
+- **iCalendar feed** - per-student `.ics` feed for subscribing from iOS/macOS Calendar, Google Calendar, or Home Assistant
+- **AI summaries** - optional digest of recent changes or messages via any OpenAI-compatible API
 
 ## Prerequisites
 
@@ -33,7 +42,7 @@ uv run playwright install chromium
 
 # Configure (optional)
 cp .env.example .env
-# Edit .env to set MESSAGE_SENDER_WHITELIST if desired
+# Edit .env to set MESSAGE_SENDER_WHITELIST, MQTT_*, CALENDAR_MAP, etc.
 
 # Authenticate with eduVulcan (opens browser)
 uv run vulcan-notify auth
@@ -53,21 +62,33 @@ uv run vulcan-notify sync
 | `vulcan-notify test` | Test if saved session is still valid |
 | `vulcan-notify sync` | Fetch latest data and show changes (default) |
 | `vulcan-notify calendar` | Force re-sync all exams/homework to macOS Calendar |
-| `vulcan-notify summarize` | AI summary of stored messages (requires `LLM_API_KEY`) |
+| `vulcan-notify tui` | Interactive Textual browser for synced content (requires `uv sync --extra tui`) |
+| `vulcan-notify summarize [--type sync\|messages] [--days N]` | AI summary of recent changes or messages (requires `LLM_API_KEY`) |
 
 ## How it works
 
-1. **Auth**: Playwright opens a browser for you to log into eduvulcan.pl. After login, session cookies are saved locally.
+1. **Auth** - Playwright opens a browser for you to log into eduvulcan.pl. After login, session cookies are saved locally. If login credentials are provided, expired sessions are renewed headlessly on subsequent runs.
 
-2. **Sync**: The tool calls the eduVulcan web API directly (using saved cookies) to fetch grades (all periods), attendance (last 90 days), exams, homework (with full descriptions), and messages for all students. Each sync run is tracked in the database.
+2. **Fetch** - The tool calls the eduVulcan web API directly (using saved cookies) to pull grades (all periods), attendance (last 90 days), exams, homework with full body, messages, and the lesson schedule including substitutions.
 
-3. **Diff**: Each item is compared against the local SQLite database. New or changed items are reported. Exams and homework that disappear from the API are soft-deleted.
+3. **Diff** - Each item is compared against the local SQLite database. New or changed items are reported; exams and homework that disappear from the API are soft-deleted.
 
-4. **Calendar**: If configured, new and updated exams/homework are pushed to macOS Calendar as all-day events with reminder alarms.
+4. **Persist** - All upserts are idempotent (`INSERT OR REPLACE`). Each run is recorded in a `sync_runs` table.
 
-5. **Display**: Changes are printed to the terminal, grouped by student and data type. Optionally, an AI-generated summary is appended.
+5. **Publish** - Changes fan out in parallel: printed to the terminal, written to macOS Calendar (if configured), enqueued in the MQTT outbox and drained to Mosquitto (if configured). The outbox survives broker outages.
+
+6. **Serve** (separate command, long-running) - `vulcan-notify api` (via Docker or systemd service) exposes the HTTP + iCalendar endpoints backed by the same SQLite file.
 
 On first sync, all existing data is stored without reporting changes (baseline). Only subsequent syncs show what's new.
+
+## Home Assistant integration
+
+Production setup runs vulcan-notify as a Docker container on a Proxmox LXC, publishing MQTT events to the Mosquitto broker inside Home Assistant OS. Two ways to wire it up:
+
+- **Event-driven (MQTT)** - subscribe to `school/#` and build sensors or automations. Topic scheme: `<prefix>/<student-slug>/<segment>/<change_type>`, e.g. `school/alice/grades/new`, `school/alice/exams/updated`, `school/alice/attendance/alert`, `school/alice/substitutions/new`. Payloads are structured JSON with the full change metadata.
+- **Pull-based (HTTP)** - HA's REST sensor polls `/api/grades/monthly`, `/api/messages`, `/api/schedule`, etc. for dashboards and history graphs. The iCalendar feed at `/calendar/<name>.ics` can be subscribed directly from any calendar client.
+
+See [`docs/architecture.md`](docs/architecture.md) for the full endpoint list, MQTT topic map, and payload examples. See [`docs/deployment.md`](docs/deployment.md) for the Proxmox/Docker/systemd setup.
 
 ## Auto-login (headless)
 
@@ -103,9 +124,7 @@ CALENDAR_MAP={"Alice Smith": "School Alice", "Bob Johnson": "School Bob"}
 
 The calendar names must match existing calendars in macOS Calendar. Each student maps to their own calendar.
 
-When configured, `vulcan-notify sync` automatically creates and updates calendar events. Use `vulcan-notify calendar` to force a clean re-sync of all events.
-
-Events are deduplicated by storing the macOS calendar UID in the database. When exams or homework are removed from the API (soft-deleted), their calendar events are also removed.
+When configured, `vulcan-notify sync` automatically creates and updates calendar events. Use `vulcan-notify calendar` to force a clean re-sync of all events. Events are deduplicated by storing the macOS calendar UID in the database; when exams or homework are removed from the API (soft-deleted), their calendar events are also removed.
 
 ## Database schema
 
@@ -197,11 +216,30 @@ entity "messages" as messages #FFF8E1 {
   first_seen : TIMESTAMP
 }
 
-entity "sync_state" as sync_state #F5F5F5 {
-  * **key** : TEXT <<PK>>
+entity "schedule" as schedule #E8F5E9 {
+  * **student_key** : TEXT <<PK, FK>>
+  * **date** : TEXT <<PK>>
+  * **time_from** : TEXT <<PK>>
+  * **subject** : TEXT <<PK>>
   --
-  value : TEXT
-  updated_at : TIMESTAMP
+  time_to : TEXT
+  teacher : TEXT
+  room : TEXT
+  group_name : TEXT
+  annotation : INTEGER
+  is_extra : BOOLEAN
+  sub_teacher : TEXT
+  sub_room : TEXT
+}
+
+entity "mqtt_outbox" as outbox #FFE0B2 {
+  * **id** : INTEGER <<PK>>
+  --
+  topic : TEXT
+  payload : TEXT
+  enqueued_at : TIMESTAMP
+  attempts : INTEGER
+  last_error : TEXT
 }
 
 entity "sync_runs" as sync_runs #F5F5F5 {
@@ -216,14 +254,22 @@ entity "sync_runs" as sync_runs #F5F5F5 {
   error_detail : TEXT
 }
 
+entity "sync_state" as sync_state #F5F5F5 {
+  * **key** : TEXT <<PK>>
+  --
+  value : TEXT
+  updated_at : TIMESTAMP
+}
+
 students ||--o{ grades
 students ||--o{ attendance
 students ||--o{ exams
 students ||--o{ homework
+students ||--o{ schedule
 @enduml
 ```
 
-![Database schema](https://www.plantuml.com/plantuml/svg/lPRVJzim4CVVyrTOy5Qj3vE6n112C95ErKPXMv7sPbsJe_Ng7v7j32hO_yx5IOdJT2tR0q92kRCJt_TpvxkUEm_MbqecNdY9x18ypC0XSza25II9MmfTW0N5fD3eLmKoO_t290bgUcN53fmlStfs1mmSMnliC3qUVHXTiiU4iG4R39Qu6WpO2PkcFwVizFJcozaPhGo7z4-3mcQ5h4o2Sxphes2CaQsT2x0hBdBoZ2VJz7FwdPmAX9oP1qudjJlB8WUFEGTV-SPNwO_fnTLDygSDVsuXnphu-Z64VfH-V0czqSHx4jwnKIsZsfKPMIfDGOKzJLWRId-3B2DPLMYHo7Bs2pCVaQY_k867tfaR6qcyHp5V-0uAZq3fi-sUEs6TvmvHTp0mHh2t-2Cyu3tg77I60L5h_YUcIlEMGgYM93fdI6-fPcXtK8mGj99xz7eCl538xwnH6ovlzdAAUE03gBfQmbEFmixyHuXQ0WsSFSKGRbuic2eriwBmmkWTelynyTLd9MwvC1LrMMNUyZBSk_3zYCl2ABmtTXdGh8qtevCPJNMvA_jl1a9H5SEywIXhWnsEHgFZzFthG40X-5oQ6SWkYzl9-Djj6lOv2Y6MroFI1TRqnjQn04VAF45IeLsVi4_Nrr_JYmcj2SSjGjxnzG3llobkfJDEuyNNdQCr2SPHzVUQsR3HCVUtyt2CBRLh3wsitfbxAf66ujRS6rNyfImgQQMBCj9CGbx5WDrH9JmgnmjhCggFZJMqrbZ7CrDgtr_WENhAPLHtBnFtwMauD8_D4EkvsyRTMmgDhETTt-7adDwZ7mZF)
+![Database schema](https://www.plantuml.com/plantuml/svg/lPPjJzim4CVVvrDOyAvQfMqQ4aC80IATqCR3jYBjdUKcH-lXX-27GGNxxZixAKdgjh1fGfMgtDb9xl_ptUKEhMF6UIaonvq0Si8Scp0Bn1Opa2pBx0rN5JDC4i4Lk7a5H1itqra62c-PaothV8dNTeimInO6sSvtHnz69-GX8sH01eCRc0y6P8-CynzZihz_-VdW05U6G_nJJ4ApWbOXcBMqxyDWj1QjNN9cvfINw3az7-UVyc_eb8oBYRwd-APsfwzAvg2ap0NVwLd-VNnqTfdzRiEV6bP27Nnz6KFVoJy-XTveeec4DsHKomYx2YsyL1XKtDE4jQJq5nE-8ok4rX7f9p-XS1qIzHENyE0zKsqw4k-0JsUkXy81m-CpxPvhRgoZ5a3rC122i5VuEtYOSw1AfWg8Y5hp7p45pIiI8Im9i5QZNYydO3PGx21e9IVq4WQEIw3NHiibbzFFSkhmW7icwso9Lmc5ZUVVGTGIQE0yamonyhg2CLCBmol7jTeW-YyFFZnMm8g22TH5E7b3VQox-FmEbvcMSAVDJKIpC5wDJg4LvkMcqtyr41Apc4sRZh8moFPeDDhDtxqC1AiudGezOQBFukhyzEjL7lTP3A4hBo7I1zRqnjOnOnQLEOGaOxlU8ySN5r_oetDSuvOQO6NFbm1-lbB25wJqekuR2-F_Tusdibwptf1Pz_59Ma2IEKPtMyRKQ5yjzMIcb7QigSIsGf4Zt3l3UY0n79gy8ZYxh-ccqwrpL7k7fnT1rfSXd_Atn-zVbazELxnetrQnkT2iR1sWRZtuLRaUshsiOdwqkcB5W37Qh8ZNpbL1ZLVDEB2mCE2Ty7jf9y2XP6NjQLcjAKkyntdROTfC8ZJ40FrHWQCgIokZ2wpFfRKepD92U-NI1Lg2mrfQ9pm40QtoQ2RIDun2ImF2-kdbQSvwV1mEzKCpkYJkzdETBCNFL-9TTEvaOL70sI4-4EV5Fm00)
 
 ## Configuration
 
@@ -236,10 +282,30 @@ All settings are via environment variables or `.env` file:
 | `VULCAN_LOGIN` | (none) | eduVulcan login email for auto-login |
 | `VULCAN_PASSWORD` | (none) | eduVulcan password for auto-login |
 | `SYNC_ATTENDANCE_DAYS` | `90` | How many days back to sync attendance |
+| `SYNC_MESSAGE_BACKFILL_BATCH` | `10` | Legacy messages to refetch bodies for, per run |
+| `POLL_INTERVAL` | `300` | Seconds between polls when run as a service |
 | `MESSAGE_SENDER_WHITELIST` | (empty) | Comma-separated sender names to filter messages |
 | `CALENDAR_MAP` | (empty) | JSON dict mapping student names to macOS calendar names |
 | `CALENDAR_REMINDER_HOURS` | `24` | Hours before event for calendar alarm |
+| `MQTT_ENABLED` | `false` | Enable MQTT publishing |
+| `MQTT_BROKER` | `localhost` | Mosquitto hostname |
+| `MQTT_PORT` | `1883` | Mosquitto port |
+| `MQTT_USERNAME` | (none) | Optional MQTT auth |
+| `MQTT_PASSWORD` | (none) | Optional MQTT auth |
+| `MQTT_TOPIC_PREFIX` | `school` | Topic namespace root |
+| `NTFY_TOPIC` | `vulcan-notify` | ntfy.sh topic (if used) |
+| `NTFY_SERVER` | `https://ntfy.sh` | ntfy server base URL |
 | `LLM_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible API base URL for AI summaries |
 | `LLM_API_KEY` | (none) | API key for AI summaries (disabled if unset) |
 | `LLM_MODEL` | `qwen-3-235b-a22b-instruct-2507` | Model name for AI summaries |
 | `LOG_LEVEL` | `INFO` | Logging level |
+
+## Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) - internal architecture, pipeline, MQTT payloads, endpoint reference
+- [`docs/deployment.md`](docs/deployment.md) - Docker + Proxmox LXC + systemd setup
+- [`docs/eduvulcan-api.md`](docs/eduvulcan-api.md) - reverse-engineered eduVulcan web API reference
+
+## License
+
+MIT. See `LICENSE`.
