@@ -85,7 +85,7 @@ On first sync for a student, every item is treated as baseline: stored silently,
 | `db.py` | Async SQLite persistence via aiosqlite. All writes are `INSERT OR REPLACE`. | `Database` |
 | `display.py` | Terminal output with ANSI colors (auto-disabled when piped). | `format_result()` |
 | `calendar.py` | macOS Calendar integration via AppleScript. Dedup by stored UID; soft-deleted items remove events. | `sync_calendar()` |
-| `mqtt.py` | Maps `Change` → topic + JSON payload; writes to the `mqtt_outbox` table; drains outbox to Mosquitto on every sync. | `topic_for()`, `build_payload()`, `flush_outbox()` |
+| `mqtt.py` | Maps `Change` → topic + JSON payload; writes to the `mqtt_outbox` table; drains outbox to Mosquitto on every sync and publishes a retained heartbeat + LWT on `<prefix>/status`. | `topic_for()`, `build_payload()`, `build_status_payload()`, `drain_outbox()` |
 | `api.py` | aiohttp HTTP server (port 8585). Grade aggregates, homework/messages/schedule endpoints, iCalendar feed. | `build_app()` |
 | `ics.py` | Zero-dependency RFC 5545 iCalendar writer. | `build_calendar()` |
 | `summarizer.py` | Optional AI digest via OpenAI-compatible APIs (profiles: `sync`, `messages`). | `summarize()` |
@@ -159,6 +159,73 @@ Optional (`MQTT_ENABLED=true`). Every `Change` is enqueued in `mqtt_outbox` insi
 ```
 
 Subscribe in Home Assistant with MQTT sensors / automations on `school/#`.
+
+#### Heartbeat, LWT, and outage detection
+
+Every sync tick publishes a retained heartbeat to `<MQTT_TOPIC_PREFIX>/status` (default `school/status`), even when there are zero changes, so the absence of messages is itself a signal. The aiomqtt client also registers a Last-Will-Testament on the same topic; if the publisher disconnects ungracefully (crash, OOM, network drop mid-connection), the broker auto-publishes `{state: "offline"}` with `retain=true`.
+
+**Heartbeat payload:**
+
+```json
+{
+  "state": "online",
+  "ts": "2026-04-14T16:13:22.457+00:00",
+  "outbox_pending": 0,
+  "version": "0.11.0"
+}
+```
+
+Home Assistant subscribes with an MQTT sensor whose `expire_after: 900` flips the state to `unavailable` if no heartbeat arrives for 15 min (3x the 5-min sync cadence). A companion automation triggers on `unavailable` or `offline`, sends a push via the mobile app, and calls `hassio.addon_restart` on `core_mosquitto`. The LWT path catches mid-connection crashes; `expire_after` catches the more common case where the publisher's short-lived connection disconnects cleanly but then fails to reconnect on the next tick (broker hung, network partition, bad credentials).
+
+```plantuml
+@startuml
+title MQTT heartbeat, LWT, and HA silence detection
+skinparam sequenceArrowThickness 1.5
+skinparam LifeLineBorderColor #C0C0C0
+hide footbox
+
+participant "sync (every 5m)" as sync
+participant "mqtt.py\ndrain_outbox" as mqtt
+queue "Mosquitto\nbroker" as broker
+participant "HA\nmqtt sensor\n(expire_after=900)" as sensor
+participant "HA\nautomation\nheartbeat_stale" as auto
+actor "Companion app\n(iOS push)" as phone
+
+== Healthy tick ==
+sync -> mqtt: publish_changes(result, db)
+mqtt -> broker: CONNECT (will: school/status = offline, retain)
+mqtt ->> broker: publish queued changes\n(school/<student>/<seg>/<type>)
+mqtt ->> broker: publish school/status\n{state: online, ts, version, outbox_pending}\nretain=true, qos=1
+mqtt -> broker: DISCONNECT (clean)
+broker ->> sensor: retained school/status -> state=online
+sensor -> sensor: reset expire_after timer (15m)
+
+== Silence > 15m (broker up, publisher stuck) ==
+...no heartbeat for 15 min...
+sensor -> sensor: expire_after fires
+sensor ->> auto: state -> unavailable
+auto ->> phone: notify "vulcan-notify silent"
+auto -> broker: hassio.addon_restart core_mosquitto
+auto ->> phone: notify "Mosquitto restart attempted"
+
+== Ungraceful publisher crash (LWT path) ==
+sync -> mqtt: publish_changes(...)
+mqtt -> broker: CONNECT (will armed)
+mqtt ->> broker: publish school/status online
+note right of mqtt: container killed\nmid-connection
+broker ->> broker: detect dropped TCP
+broker ->> sensor: LWT school/status = offline
+sensor ->> auto: state -> offline
+auto ->> phone: notify + restart (same as above)
+
+legend right
+  ACK responses omitted for clarity
+  -> sync  ->> async fire-and-forget
+end legend
+@enduml
+```
+
+![MQTT heartbeat, LWT, and HA silence detection](https://www.plantuml.com/plantuml/svg/ZLNVRzCm47xtNt4gBvreo_Qm1ofIRHIa8GO3hOYNIfMRN1khpZcpBuCAyRzpTj9krNwXI95ZV_Vhk--Siy3QSrDPnOOjmfVlincKA7jBr3o0ov-p0MWguE8SWh58EKA1Z3aRHofi3DNQwme2tZJnyDnxzsjMcdn360ASZ4xlWIxD2YyDuNld2_HJPvs7LzFZ-AZI50WhvtZfVYibU3QvgJKnzCAMSkZZBVejd5P7FT01ujuXghfX7jNREHLU6rgu9dfAs7YY9Bq6eVV5XPl6CBivBRtRe4-8Tddex-9yJj5IIgFW_9pw-Bis7XTwnUYpjyV7NIRf-A6jRjXLEj8qfpsX2w7ROhABvqhdB1pqfguIGu62hck9PAwkeMv2sKQeIqUeL9R11MhBvHOaqWQoJ2LcXfDKuLWibjQ4Sf6NcjOO-Xv3OwM7nV98fKe4sLOwXkdLrwyVfpFe_pBMZY7afNFsZMJ7JO0Ct6fbfL43yCZ2vjx-pa4N31Al1NGn9VVErRl0JO744rdXMjwyhN7oZAE35ERq9ovm38xQH3WCG1GGXAG1jCrTr4Y5eVNVERLfPkmRWTwua9qygFZ3f-jzqRb5BKMrHocRjelZhbufw90HyPFooTfqL0jFstl3W0pt9I9TgkJTFn7DfkvTT_Cp0Tc2VXUzgGSx3kHBMCitHx6tez68tDqeocnuiOFAa9myai11w9KimnreajGsRck8HWtfMssiNbfKyIXXaix6G8xDQWkzsyRcceRTPnf-xktGUrfB7QGd8rqKZXOID5uda3l9fDgDsfCHziC8EqFDZ5NDMFGIOpzexNMEgyRUeoZtMkJIbvi9QitbqSk388IzC06WVON5_wgp4wMIEX2yMPSi0zF5pXqb1NdOY5yiv18nnL1sgRipxubk5wIzKA7mhgv5UhFfjyUa6Gj-OawVwVGEyKGFNk-fxmTTORgObkuMHR4Mrp9VRNqAu7pwEM9hHm65WKhw9hb6LUPMUyDRmKGvnawqYQHbLE9GVY13GQwHLNJPUbPdyf8_ppy0)
 
 ### HTTP API (`api.py`)
 
