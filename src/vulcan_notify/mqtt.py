@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
 import aiomqtt
@@ -19,6 +20,13 @@ if TYPE_CHECKING:
     from vulcan_notify.sync import FullSyncResult
 
 logger = logging.getLogger(__name__)
+
+try:
+    _VERSION = version("vulcan-notify")
+except PackageNotFoundError:
+    _VERSION = "0.0.0"
+
+_OFFLINE_PAYLOAD = b'{"state":"offline"}'
 
 # Attendance category names (category 1 = present is never published)
 _ATTENDANCE_CATEGORIES = {2: "absent", 3: "late", 4: "excused"}
@@ -173,30 +181,59 @@ async def enqueue_changes(result: FullSyncResult, db: Database) -> None:
     await db.commit()
 
 
+def status_topic() -> str:
+    return f"{settings.mqtt_topic_prefix}/{settings.mqtt_status_suffix}"
+
+
+def build_status_payload(outbox_pending: int) -> dict[str, object]:
+    """Retained heartbeat payload published at the end of every sync."""
+    return {
+        "state": "online",
+        "ts": _now_iso(),
+        "outbox_pending": outbox_pending,
+        "version": _VERSION,
+    }
+
+
 async def drain_outbox(db: Database) -> tuple[int, int]:
-    """Publish every queued message; drop successes, keep failures. Returns (ok, pending)."""
+    """Connect, drain the outbox, publish retained heartbeat.
+
+    Always runs when MQTT is enabled (even if the outbox is empty) so HA can
+    detect silence via the retained `status` topic + LWT. Returns (ok, pending).
+    """
     if not settings.mqtt_enabled:
         return 0, 0
 
     queue = await db.list_mqtt_outbox()
-    if not queue:
-        return 0, 0
-
     published_ids: list[int] = []
+
+    will = aiomqtt.Will(
+        topic=status_topic(), payload=_OFFLINE_PAYLOAD, qos=1, retain=True
+    )
     try:
         async with aiomqtt.Client(
             hostname=settings.mqtt_broker,
             port=settings.mqtt_port,
             username=settings.mqtt_username,
             password=settings.mqtt_password,
+            will=will,
         ) as client:
             for item in queue:
                 await client.publish(str(item["topic"]), str(item["payload"]))
                 published_ids.append(int(item["id"]))
                 logger.debug("MQTT publish: %s", item["topic"])
+
+            pending_after = len(queue) - len(published_ids)
+            await client.publish(
+                status_topic(),
+                json.dumps(build_status_payload(pending_after)),
+                qos=1,
+                retain=True,
+            )
     except Exception as exc:
         failed_ids = [int(i["id"]) for i in queue if int(i["id"]) not in published_ids]
-        await db.mark_mqtt_outbox_failure(failed_ids, f"{type(exc).__name__}: {exc}")
+        if failed_ids:
+            await db.mark_mqtt_outbox_failure(failed_ids, f"{type(exc).__name__}: {exc}")
         logger.warning(
             "MQTT publish failed after %d/%d delivered (broker: %s:%d, %d queued for retry): %s",
             len(published_ids),
@@ -215,13 +252,11 @@ async def drain_outbox(db: Database) -> tuple[int, int]:
             len(queue) - len(published_ids),
         )
 
-    # Always commit: deletes for successes AND attempt/error bumps for failures.
     await db.commit()
 
     return len(published_ids), len(queue) - len(published_ids)
 
 
-# Backwards-compatible shim — callers pass the db now; old call sites updated.
 async def publish_changes(result: FullSyncResult, db: Database) -> None:
     await enqueue_changes(result, db)
     await drain_outbox(db)

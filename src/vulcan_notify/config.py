@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     mqtt_username: str | None = None
     mqtt_password: str | None = None
     mqtt_topic_prefix: str = "school"
+    mqtt_status_suffix: str = "status"  # retained heartbeat topic under the prefix
 
     # Logging
     log_level: str = "INFO"
