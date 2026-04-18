@@ -283,7 +283,9 @@ All settings are via environment variables or `.env` file:
 | `VULCAN_PASSWORD` | (none) | eduVulcan password for auto-login |
 | `SYNC_ATTENDANCE_DAYS` | `90` | How many days back to sync attendance |
 | `SYNC_MESSAGE_BACKFILL_BATCH` | `10` | Legacy messages to refetch bodies for, per run |
-| `POLL_INTERVAL` | `300` | Seconds between polls when run as a service |
+| `POLL_INTERVAL` | `1800` | Seconds between polls when run as a service |
+| `QUIET_HOURS_START` | `0` | Hour (0-23) to start quiet window, sync paused |
+| `QUIET_HOURS_END` | `5` | Hour (0-23) to end quiet window, sync resumes |
 | `MESSAGE_SENDER_WHITELIST` | (empty) | Comma-separated sender names to filter messages |
 | `CALENDAR_MAP` | (empty) | JSON dict mapping student names to macOS calendar names |
 | `CALENDAR_REMINDER_HOURS` | `24` | Hours before event for calendar alarm |
