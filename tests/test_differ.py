@@ -1,7 +1,13 @@
 """Tests for the change detection engine."""
 
 from vulcan_notify.db import Database
-from vulcan_notify.differ import diff_attendance, diff_exams, diff_grades, diff_homework
+from vulcan_notify.differ import (
+    _short_due,
+    diff_attendance,
+    diff_exams,
+    diff_grades,
+    diff_homework,
+)
 from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Student
 
 STUDENT = Student(
@@ -177,8 +183,19 @@ async def test_known_exam_not_reported(db: Database) -> None:
 
 async def test_new_homework_detected(db: Database) -> None:
     await db.upsert_student(STUDENT)
-    hw = [Homework(id=10002, date="2026-03-16", subject="Plastyka")]
+    hw = [Homework(id=10002, date="2026-04-27T00:00:00+02:00", subject="Plastyka")]
     changes = await diff_homework(STUDENT, hw, db)
 
     assert len(changes) == 1
-    assert "Plastyka" in changes[0].title
+    assert changes[0].title == "HW: Plastyka"
+    assert changes[0].body == "Due: Mon, Apr 27"
+
+
+def test_short_due_formats_iso() -> None:
+    assert _short_due("2026-04-27T00:00:00+02:00") == "Mon, Apr 27"
+    assert _short_due("2026-03-16") == "Mon, Mar 16"
+
+
+def test_short_due_falls_back_on_garbage() -> None:
+    assert _short_due("not-a-date") == "not-a-date"
+    assert _short_due("") == ""
