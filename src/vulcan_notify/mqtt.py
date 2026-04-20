@@ -64,11 +64,16 @@ def topic_for(change: Change) -> str:
     return f"{prefix}/{student}/{segment}/{change.change_type}"
 
 
+def _display_name(full: str) -> str:
+    """Map canonical student name to a short display name for push UI."""
+    return settings.display_name_map.get(full, full)
+
+
 def build_payload(change: Change) -> dict[str, object]:
     """Build a structured JSON payload from a Change and its raw model."""
     raw = change.raw
     base: dict[str, object] = {
-        "student": change.student_name,
+        "student": _display_name(change.student_name),
         "title": change.title,
         "message": change.body,
         "timestamp": _now_iso(),
