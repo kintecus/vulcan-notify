@@ -183,6 +183,24 @@ def test_build_payload_no_raw_still_has_title_message() -> None:
     assert payload["message"] == "Test body"
 
 
+def test_build_payload_applies_display_name_map() -> None:
+    change = Change(
+        change_type="new",
+        item_type="homework",
+        student_name="Solomiia Senyuk",
+        title="HW: Plastyka",
+        body="Due: Mon, Apr 27",
+    )
+    with patch.dict(
+        "vulcan_notify.mqtt.settings.display_name_map",
+        {"Solomiia Senyuk": "Solya"},
+        clear=True,
+    ):
+        payload = build_payload(change)
+
+    assert payload["student"] == "Solya"
+
+
 # ── build_message_payload ────────────────────────────────────────
 
 
@@ -310,6 +328,7 @@ async def test_publish_sends_changes(db: Database) -> None:
         mock_settings.mqtt_password = None
         mock_settings.mqtt_topic_prefix = "school"
         mock_settings.mqtt_status_suffix = "status"
+        mock_settings.display_name_map = {}
         with patch("vulcan_notify.mqtt.aiomqtt.Client", return_value=mock_client_ctx):
             await publish_changes(result, db)
 
@@ -404,6 +423,7 @@ async def test_publish_retains_on_failure(db: Database) -> None:
         mock_settings.mqtt_username = None
         mock_settings.mqtt_password = None
         mock_settings.mqtt_topic_prefix = "school"
+        mock_settings.display_name_map = {}
         with patch("vulcan_notify.mqtt.aiomqtt.Client", side_effect=OSError("Connection refused")):
             await publish_changes(result, db)
 

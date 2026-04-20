@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,6 +19,18 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+
+def _short_due(raw: str) -> str:
+    """Format an ISO date(-time) string as e.g. `Mon, Apr 27`.
+
+    Falls back to the raw string if parsing fails (Vulcan occasionally returns
+    unexpected shapes).
+    """
+    try:
+        return datetime.fromisoformat(raw).strftime("%a, %b %d")
+    except (ValueError, TypeError):
+        return raw
 
 
 @dataclass
@@ -329,8 +342,8 @@ async def diff_homework(
                     change_type="new",
                     item_type="homework",
                     student_name=student.name,
-                    title=f"Homework: {hw.subject}",
-                    body=f"Due: {hw.date}\nSubject: {hw.subject}",
+                    title=f"HW: {hw.subject}",
+                    body=f"Due: {_short_due(hw.date)}",
                     priority=2,
                     tags=["books", "school"],
                     raw=hw,

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     mqtt_topic_prefix: str = "school"
     mqtt_status_suffix: str = "status"  # retained heartbeat topic under the prefix
 
+    # Short display names for push notifications (full name -> nickname).
+    # Keeps the notification title terse on a watch / lock screen.
+    display_name_map: dict[str, str] = {}
+
     # Logging
     log_level: str = "INFO"
 
