@@ -33,6 +33,13 @@ def _short_due(raw: str) -> str:
         return raw
 
 
+def _grade_body(grade: Grade) -> str:
+    """Short category + weight, e.g. `Sprawdzian (w.3)` or just `Sprawdzian`."""
+    if grade.weight and grade.weight != 1:
+        return f"{grade.column_name} (w.{grade.weight})"
+    return grade.column_name
+
+
 @dataclass
 class Change:
     """A detected change in school data."""
@@ -70,13 +77,8 @@ async def diff_grades(
                     change_type="new",
                     item_type="grade",
                     student_name=student.name,
-                    title=f"New grade: {grade.value} in {grade.subject}",
-                    body=(
-                        f"Subject: {grade.subject}\n"
-                        f"Grade: {grade.value}\n"
-                        f"Category: {grade.column_name}\n"
-                        f"Teacher: {grade.teacher}"
-                    ),
+                    title=f"G: {grade.subject} {grade.value}",
+                    body=_grade_body(grade),
                     priority=4,
                     tags=["pencil2", "school"],
                     raw=grade,
@@ -89,13 +91,8 @@ async def diff_grades(
                     change_type="updated",
                     item_type="grade",
                     student_name=student.name,
-                    title=f"Grade changed: {old_value} -> {grade.value} in {grade.subject}",
-                    body=(
-                        f"Subject: {grade.subject}\n"
-                        f"Old: {old_value} -> New: {grade.value}\n"
-                        f"Category: {grade.column_name}\n"
-                        f"Teacher: {grade.teacher}"
-                    ),
+                    title=f"G: {grade.subject} {old_value}→{grade.value}",
+                    body=_grade_body(grade),
                     priority=4,
                     tags=["pencil2", "school"],
                     raw=grade,
@@ -129,12 +126,8 @@ async def diff_attendance(
                     change_type="new",
                     item_type="attendance",
                     student_name=student.name,
-                    title=f"Attendance: {category_name}",
-                    body=(
-                        f"Date: {entry.date}\n"
-                        f"Lesson {entry.lesson_number}: {entry.subject}\n"
-                        f"Teacher: {entry.teacher}"
-                    ),
+                    title=f"{category_name}: {entry.subject}",
+                    body=f"{_short_due(entry.date)} • lesson {entry.lesson_number}",
                     priority=3,
                     tags=["calendar", "school"],
                     raw=entry,
@@ -161,8 +154,8 @@ async def diff_exams(
                     change_type="new",
                     item_type="exam",
                     student_name=student.name,
-                    title=f"Upcoming {exam_type}: {exam.subject}",
-                    body=f"Date: {exam.date}\nSubject: {exam.subject}",
+                    title=f"{exam_type}: {exam.subject}",
+                    body=_short_due(exam.date),
                     priority=3,
                     tags=["memo", "school"],
                     raw=exam,
@@ -245,13 +238,10 @@ async def diff_schedule(
                     change_type="new",
                     item_type="addition",
                     student_name=student.name,
-                    title=f"Extra lesson added: {lesson.subject} ({lesson.date})",
+                    title=f"+Lesson: {lesson.subject}",
                     body=(
-                        f"Date: {lesson.date}\n"
-                        f"Time: {lesson.time_from[11:16]}-{lesson.time_to[11:16]}\n"
-                        f"Subject: {lesson.subject}\n"
-                        f"Teacher: {lesson.teacher}\n"
-                        f"Room: {lesson.room or '?'}"
+                        f"{_short_due(lesson.date)} "
+                        f"{lesson.time_from[11:16]}-{lesson.time_to[11:16]}"
                     ),
                     priority=4,
                     tags=["sparkles", "school"],
@@ -271,20 +261,19 @@ async def diff_schedule(
         else:
             continue
 
-        title = f"Substitution: {lesson.subject} ({lesson.date})"
-        body_lines = [
-            f"Date: {lesson.date}",
-            f"Time: {lesson.time_from[11:16]}-{lesson.time_to[11:16]}",
-            f"Subject: {lesson.subject}",
-            f"Change: {_sub_summary(lesson)}",
-        ]
+        title = f"Sub: {lesson.subject}"
+        body = (
+            f"{_short_due(lesson.date)} "
+            f"{lesson.time_from[11:16]}-{lesson.time_to[11:16]} • "
+            f"{_sub_summary(lesson)}"
+        )
         changes.append(
             Change(
                 change_type=change_type,
                 item_type="substitution",
                 student_name=student.name,
                 title=title,
-                body="\n".join(body_lines),
+                body=body,
                 priority=4,
                 tags=["arrows_counterclockwise", "school"],
                 raw=lesson,
@@ -297,26 +286,14 @@ async def diff_schedule(
             continue
         date, time_from, subject = key
         time_to = str(row.get("time_to") or "")
-        teacher = str(row.get("teacher") or "")
-        room = str(row.get("room") or "")
-        body_lines = [
-            f"Date: {date}",
-            f"Time: {time_from[11:16]}-{time_to[11:16]}"
-            if time_to
-            else f"Time: {time_from[11:16]}",
-            f"Subject: {subject}",
-        ]
-        if teacher:
-            body_lines.append(f"Teacher: {teacher}")
-        if room:
-            body_lines.append(f"Room: {room}")
+        when = f"{time_from[11:16]}-{time_to[11:16]}" if time_to else time_from[11:16]
         changes.append(
             Change(
                 change_type="new",
                 item_type="cancellation",
                 student_name=student.name,
-                title=f"Lesson cancelled: {subject} ({date})",
-                body="\n".join(body_lines),
+                title=f"Cancelled: {subject}",
+                body=f"{_short_due(date)} {when}",
                 priority=4,
                 tags=["x", "school"],
             )
