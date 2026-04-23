@@ -83,7 +83,7 @@ async def test_diff_schedule_flags_cancellation(db: Database) -> None:
     changes = await diff_schedule(STUDENT, [], db, date_from="2026-04-15", date_to="2026-04-15")
     assert len(changes) == 1
     assert changes[0].item_type == "cancellation"
-    assert "Matematyka" in changes[0].title
+    assert changes[0].title == "Cancelled: Matematyka"
 
     # Row was deleted so it won't re-fire on next sync
     remaining = await db.get_lessons_for_student(STUDENT.key)
@@ -109,7 +109,7 @@ async def test_diff_schedule_flags_extra_lesson(db: Database) -> None:
     )
     assert len(changes) == 1
     assert changes[0].item_type == "addition"
-    assert "Extra lesson added: Club" in changes[0].title
+    assert changes[0].title == "+Lesson: Club"
 
 
 async def test_diff_schedule_does_not_refire_extra_lesson(db: Database) -> None:
