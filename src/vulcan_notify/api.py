@@ -328,6 +328,58 @@ def _get_homework(n: int = 5) -> dict[str, Any]:
     return students
 
 
+_EXAM_TYPE_LABELS = {1: "test", 2: "quiz"}
+
+
+def _get_exams(
+    student_filter: str | None = None,
+    days_ahead: int = 21,
+) -> dict[str, Any]:
+    """Return upcoming exams per student, soonest first.
+
+    Exam dates are stored as ISO 8601 timestamps (e.g. `2026-04-15T00:00:00+02:00`),
+    so the date prefix is compared against today's `YYYY-MM-DD`.
+    """
+    db = _connect()
+    result: dict[str, Any] = {}
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    to_date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+
+    query = "SELECT key, name, class_name FROM students"
+    params: tuple[str, ...] = ()
+    if student_filter:
+        query += " WHERE name = ?"
+        params = (student_filter,)
+
+    for s in db.execute(query, params):
+        rows = db.execute(
+            "SELECT date, subject, type, description, teacher "
+            "FROM exams WHERE student_key = ? AND deleted_at IS NULL "
+            "AND substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ? "
+            "ORDER BY date ASC, subject ASC",
+            (s["key"], today, to_date),
+        ).fetchall()
+        exams = [
+            {
+                "date": r["date"][:10],
+                "subject": r["subject"],
+                "type": _EXAM_TYPE_LABELS.get(r["type"], "exam"),
+                "description": r["description"],
+                "teacher": r["teacher"],
+            }
+            for r in rows
+        ]
+        result[s["name"]] = {
+            "class": s["class_name"],
+            "exams": exams,
+            "count": len(exams),
+        }
+
+    db.close()
+    return result
+
+
 def _get_messages(n: int = 20) -> list[dict[str, Any]]:
     """Read latest N messages (unified inbox, not per-student)."""
     db = _connect()
@@ -456,6 +508,12 @@ async def handle_messages(request: web.Request) -> web.Response:
     return web.json_response({"messages": _get_messages(n)})
 
 
+async def handle_exams(request: web.Request) -> web.Response:
+    student = request.query.get("student")
+    days = int(request.query.get("days", "21"))
+    return web.json_response(_get_exams(student, days))
+
+
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
@@ -470,6 +528,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/grades", handle_grades)
     app.router.add_get("/api/homework", handle_homework)
     app.router.add_get("/api/messages", handle_messages)
+    app.router.add_get("/api/exams", handle_exams)
     app.router.add_get("/api/health", handle_health)
     return app
 
