@@ -41,8 +41,8 @@ async def test_new_grade_detected(db: Database) -> None:
     assert changes[0].change_type == "new"
     assert changes[0].item_type == "grade"
     assert changes[0].student_name == "Jan Kowalski"
-    assert "5" in changes[0].title
-    assert "Math" in changes[0].title
+    assert changes[0].title == "G: Math 5"
+    assert changes[0].body == "Test 1"
 
 
 async def test_same_grade_not_reported_twice(db: Database) -> None:
@@ -101,8 +101,8 @@ async def test_changed_grade_detected(db: Database) -> None:
 
     assert len(changes) == 1
     assert changes[0].change_type == "updated"
-    assert "4" in changes[0].title
-    assert "5" in changes[0].title
+    assert changes[0].title == "G: Math 4→5"
+    assert changes[0].old_value == "4"
 
 
 async def test_multiple_new_grades(db: Database) -> None:
@@ -141,7 +141,8 @@ async def test_new_absence_detected(db: Database) -> None:
     changes = await diff_attendance(STUDENT, entries, db)
 
     assert len(changes) == 1
-    assert "Absent" in changes[0].title
+    assert changes[0].title == "Absent: Math"
+    assert changes[0].body == "Sat, Mar 14 • lesson 3"
     assert changes[0].student_name == "Jan Kowalski"
 
 
@@ -168,8 +169,8 @@ async def test_new_exam_detected(db: Database) -> None:
     changes = await diff_exams(STUDENT, exams, db)
 
     assert len(changes) == 1
-    assert "Quiz" in changes[0].title
-    assert "Przyroda" in changes[0].title
+    assert changes[0].title == "Quiz: Przyroda"
+    assert changes[0].body == "Mon, Mar 16"
 
 
 async def test_known_exam_not_reported(db: Database) -> None:
