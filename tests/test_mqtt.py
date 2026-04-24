@@ -217,8 +217,8 @@ def test_build_message_payload() -> None:
     )
     payload = build_message_payload(msg)
 
-    assert payload["title"] == "Message from Kowalska A."
-    assert payload["message"] == "Subject: Informacja"
+    assert payload["title"] == "Msg: Kowalska A."
+    assert payload["message"] == "Informacja"
     assert payload["sender"] == "Kowalska A."
     assert payload["subject"] == "Informacja"
     assert payload["date"] == "2026-04-07"
@@ -244,7 +244,7 @@ def test_build_message_payload_includes_body_preview() -> None:
 
     assert payload["body"] == "Hello parents,\nPlease remember the trip tomorrow."
     message_text = str(payload["message"])
-    assert message_text.startswith("Subject: Informacja")
+    assert message_text.startswith("Informacja")
     assert "Hello parents,\nPlease remember the trip tomorrow." in message_text
 
 

@@ -146,11 +146,11 @@ def build_message_payload(msg: Message) -> dict[str, object]:
     preview = body_text[:_PREVIEW_CHARS]
     if len(body_text) > _PREVIEW_CHARS:
         preview += "…"
-    message_field = f"Subject: {msg.subject}"
+    message_field = msg.subject
     if preview:
         message_field += f"\n\n{preview}"
     return {
-        "title": f"Message from {msg.sender}",
+        "title": f"Msg: {msg.sender}",
         "message": message_field,
         "sender": msg.sender,
         "subject": msg.subject,
@@ -212,9 +212,7 @@ async def drain_outbox(db: Database) -> tuple[int, int]:
     queue = await db.list_mqtt_outbox()
     published_ids: list[int] = []
 
-    will = aiomqtt.Will(
-        topic=status_topic(), payload=_OFFLINE_PAYLOAD, qos=1, retain=True
-    )
+    will = aiomqtt.Will(topic=status_topic(), payload=_OFFLINE_PAYLOAD, qos=1, retain=True)
     try:
         async with aiomqtt.Client(
             hostname=settings.mqtt_broker,
