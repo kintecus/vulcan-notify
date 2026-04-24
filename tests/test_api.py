@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from vulcan_notify import api as api_mod
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
-from vulcan_notify.models import Grade, Student
+from vulcan_notify.models import Exam, Grade, Student
 
 
 @pytest.fixture
@@ -120,6 +120,71 @@ async def test_subject_averages(seeded_db: Path) -> None:
     assert all(
         subjects[i]["average"] >= subjects[i + 1]["average"] for i in range(len(subjects) - 1)
     )
+
+
+@pytest.fixture
+async def seeded_exams_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Seed a DB with two students and a mix of past/future exams."""
+    db_path = tmp_path / "exams.db"
+    monkeypatch.setattr(settings, "db_path", db_path)
+
+    database = Database(db_path)
+    await database.connect()
+    for key, name in (("S1", "Yarema"), ("S2", "Solomiia")):
+        await database.upsert_student(
+            Student(
+                key=key, name=name, class_name="3A", school="Sz",
+                diary_id=1, mailbox_key=None,
+            ),
+        )
+
+    today = datetime.now()
+    past = (today - timedelta(days=5)).strftime("%Y-%m-%dT00:00:00+02:00")
+    near = (today + timedelta(days=3)).strftime("%Y-%m-%dT00:00:00+02:00")
+    far = (today + timedelta(days=40)).strftime("%Y-%m-%dT00:00:00+02:00")
+
+    exams = [
+        ("S1", 1, past, "Matematyka", 1, "Past test", "T1"),
+        ("S1", 2, near, "Polski", 2, "Quiz near", "T2"),
+        ("S1", 3, far, "Historia", 1, "Far test", "T3"),
+        ("S2", 4, near, "Biologia", 1, "Solomiia near", "T4"),
+    ]
+    for key, eid, date, subject, etype, desc, teacher in exams:
+        await database.upsert_exam(
+            key,
+            Exam(id=eid, date=date, subject=subject, type=etype,
+                 description=desc, teacher=teacher),
+        )
+    await database.db.commit()
+    await database.close()
+    return db_path
+
+
+async def test_exams_window_and_mapping(seeded_exams_db: Path) -> None:
+    result = api_mod._get_exams(days_ahead=21)
+
+    # Past exam excluded, far-future (>21 days) excluded, near included
+    yarema = result["Yarema"]["exams"]
+    assert len(yarema) == 1
+    assert yarema[0]["subject"] == "Polski"
+    assert yarema[0]["type"] == "quiz"
+    assert len(yarema[0]["date"]) == 10  # trimmed to YYYY-MM-DD
+
+    assert result["Yarema"]["count"] == 1
+    assert result["Solomiia"]["count"] == 1
+
+
+async def test_exams_student_filter(seeded_exams_db: Path) -> None:
+    result = api_mod._get_exams(student_filter="Yarema", days_ahead=21)
+    assert list(result.keys()) == ["Yarema"]
+    assert api_mod._get_exams(student_filter="Ghost") == {}
+
+
+async def test_exams_days_ahead_extends_window(seeded_exams_db: Path) -> None:
+    result = api_mod._get_exams(student_filter="Yarema", days_ahead=60)
+    subjects = [e["subject"] for e in result["Yarema"]["exams"]]
+    # Near (3d) + far (40d) both fit in 60d window
+    assert subjects == ["Polski", "Historia"]
 
 
 def test_month_list_year_mode() -> None:
