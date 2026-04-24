@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CLI tool that syncs data from the eduVulcan school e-journal (grades, attendance, exams, homework, messages) to a local SQLite database and detects changes between syncs. Uses cookie-based auth via Playwright browser login.
 
+## Sibling repos (cross-repo work is common)
+
+Changes here almost always need a corresponding change in the homelab repo — new API endpoints need HA REST sensors, new MQTT topics need HA automations, new deploy behavior needs CLAUDE.md updates. Always check the homelab repo before assuming infra/docs don't exist, and update both in a single session when a change spans them.
+
+- **homelab** (`/Users/ostaps/code/homelab`) — Proxmox + HA + Jellyfin + arr-stack docs and config. Owns the LXC 103 deploy environment, HA `configuration.yaml` REST sensors that call this daemon's API, the `MQTT-TEST` automation that forwards our MQTT events to push notifications, and the "School" Lovelace dashboard. See `homelab/vulcan-ha-integration.md` for the integration plan and `homelab/notifications.md` for the MQTT→push flow.
+
+Cross-repo permission is granted for `/Users/ostaps/code/homelab/**` (Read/Edit/Write) + git ops in `.claude/settings.local.json`, so you can operate on that repo without prompts.
+
 ## Commands
 
 ```bash
