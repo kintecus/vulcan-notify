@@ -72,64 +72,57 @@ uv run vulcan-notify sync
 End-to-end flow from the eduVulcan API down to a push notification on your phone and a tile on your Home Assistant dashboard:
 
 ```mermaid
-%%{init: {'theme':'base','flowchart':{'curve':'basis','nodeSpacing':60,'rankSpacing':70}}}%%
-flowchart LR
+%%{init: {'theme':'base','flowchart':{'curve':'basis','nodeSpacing':50,'rankSpacing':60}}}%%
+flowchart TB
     accTitle: vulcan-notify end-to-end flow
-    accDescr: A scheduled sync pulls grades, attendance, exams, homework, messages, and the schedule from the eduVulcan API. Changes are diffed against SQLite, then fanned out to terminal, macOS Calendar, MQTT, and an HTTP/iCalendar API. Home Assistant consumes both MQTT events and the HTTP API to drive a dashboard and push notifications to the parent's phone.
+    accDescr: A scheduled sync pulls grades, attendance, exams, homework, messages, and schedule from eduVulcan. Changes are diffed against SQLite and fanned out to the terminal, macOS Calendar, MQTT, and an HTTP/iCalendar API. Home Assistant consumes MQTT events and the HTTP API to drive a school dashboard and push notifications. Both iCloud Calendar and HA push converge on the parent's phone.
 
-    subgraph Source[eduVulcan]
-        Vulcan([uczen.eduvulcan.pl])
-    end
+    Vulcan([uczen.eduvulcan.pl])
 
-    subgraph Daemon[vulcan-notify]
-        Cron[/cron · timer/] -->|every N min| Sync(sync)
+    subgraph Daemon[vulcan-notify daemon]
+        direction TB
+        Cron[/cron · timer/] --> Sync(sync)
         Auth[[auth · Playwright]] -.->|cookies| Sync
-        Sync -->|HTTPS + cookies| Vulcan
-        Vulcan -->|JSON| Sync
-        Sync --> Differ{New or changed?}
-        Differ -->|baseline / no diff| DB[(SQLite)]
-        Differ -->|changes| Fanout{{fan-out}}
+        Sync --> Differ{New or<br/>changed?}
+        Differ --> DB[(SQLite)]
+        Differ --> Fanout{{fan-out}}
         Fanout --> DB
         Fanout --> Term[/terminal/]
-        Fanout --> Cal[macOS Calendar]
+        Fanout --> CalSync[calendar sync]
         Fanout --> Outbox[(MQTT outbox)]
-        Outbox --> MQTTPub[mqtt publisher]
         API[api · aiohttp :8585] --> DB
-        API --> ICS[/calendar.ics/]
     end
 
     subgraph HA[Home Assistant]
-        Mosq[(Mosquitto)]
-        Sensors[REST + MQTT sensors]
-        Auto{{Automations}}
-        Dash[School dashboard]
-        Push[/Push to phone/]
+        direction TB
+        Mosq[(Mosquitto)] --> Sensors[REST + MQTT sensors]
+        Sensors --> Dash[School dashboard]
+        Sensors --> Auto{{Automations}}
+        Auto --> Push[/Push notification/]
     end
 
     Phone([Parent phone])
-    Browser([iOS / macOS Calendar])
 
-    MQTTPub -->|school/#| Mosq
-    Mosq --> Sensors
-    Sensors --> Dash
+    Sync <-->|HTTPS · JSON| Vulcan
+    CalSync -->|AppleScript| iCloud[(iCloud Calendar)]
+    Outbox -->|school/#| Mosq
     API -->|REST polling| Sensors
-    Sensors --> Auto
-    Auto --> Push
+    API -->|/calendar/<name>.ics| iCloud
+    iCloud --> Phone
     Push --> Phone
-    Browser -->|subscribe .ics| API
-    Cal -->|iCloud| Phone
 
     classDef storage fill:#ecfdf5,stroke:#16a34a,color:#064e3b;
     classDef external fill:#fef3c7,stroke:#d97706,color:#78350f;
     classDef actor fill:#eef2ff,stroke:#4f46e5,color:#312e81;
-    class DB,Outbox,Mosq storage;
-    class Vulcan,Cal external;
-    class Phone,Browser actor;
+    class DB,Outbox,Mosq,iCloud storage;
+    class Vulcan external;
+    class Phone actor;
 
     linkStyle default stroke:#64748b,stroke-width:1.5px
-    linkStyle 1,2,3 stroke:#2563eb,stroke-width:2px
-    linkStyle 6,7,8,9,10,11,12 stroke:#16a34a,stroke-width:2px
-    linkStyle 13,14,15,16,17,18,19,20 stroke:#ea580c,stroke-width:2px
+    linkStyle 14 stroke:#2563eb,stroke-width:2px
+    linkStyle 3,4,5 stroke:#16a34a,stroke-width:2px
+    linkStyle 15,16,17,18 stroke:#ea580c,stroke-width:2px
+    linkStyle 12,13 stroke:#9333ea,stroke-width:1.5px,stroke-dasharray: 4 3
 ```
 
 1. **Auth** - Playwright opens a browser for you to log into eduvulcan.pl. After login, session cookies are saved locally. If login credentials are provided, expired sessions are renewed headlessly on subsequent runs.
