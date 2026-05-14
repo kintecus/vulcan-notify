@@ -27,9 +27,16 @@ def _date_minus_days(iso_date: str, days: int) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
+def _is_diagnostic(value: str) -> bool:
+    """Diagnostic 'diagnoza' results are stored as percentages like '35 (%)' or '86%'."""
+    return "%" in value
+
+
 def _grade_to_numeric(value: str) -> float | None:
     """Convert Polish grade string to numeric value. Returns None for non-gradeable marks."""
     v = value.strip().lower()
+    if _is_diagnostic(v):
+        return None
     if not v or v[0] not in "123456":
         return None
     base = int(v[0])
@@ -284,23 +291,39 @@ def _get_schedule(
     return result
 
 
-def _get_grades(n: int = 5) -> dict[str, Any]:
-    """Read latest N grades per student from the database."""
+def _get_grades(n: int = 5, diagnostic_days: int = 180) -> dict[str, Any]:
+    """Read latest N grades per student plus recent diagnostic-test results.
+
+    Diagnostics (Polish 'diagnoza' tests, scored as raw percentages e.g. '35 (%)')
+    are surfaced separately so the dashboard can flag them without polluting the
+    regular grade stream — they don't count toward the semester average.
+    """
     db = _connect()
     students = {}
+    diag_cutoff = _date_minus_days(datetime.now().strftime("%Y-%m-%d"), diagnostic_days)
     for s in db.execute("SELECT key, name, class_name FROM students"):
         grades = []
+        non_diag_count = 0
+        diagnostics: list[dict[str, Any]] = []
         for g in db.execute(
             "SELECT value, date, subject, column_name, category "
             "FROM grades WHERE student_key = ? "
-            "ORDER BY substr(date,7,4)||substr(date,4,2)||substr(date,1,2) DESC "
-            "LIMIT ?",
-            (s["key"], n),
+            "ORDER BY substr(date,7,4)||substr(date,4,2)||substr(date,1,2) DESC ",
+            (s["key"],),
         ):
-            grades.append(dict(g))
+            row = dict(g)
+            iso = f"{row['date'][6:10]}-{row['date'][3:5]}-{row['date'][0:2]}"
+            if _is_diagnostic(row["value"]):
+                if iso >= diag_cutoff:
+                    diagnostics.append(row)
+                continue
+            if non_diag_count < n:
+                grades.append(row)
+                non_diag_count += 1
         students[s["name"]] = {
             "class": s["class_name"],
             "grades": grades,
+            "diagnostics": diagnostics,
         }
     db.close()
     return students
