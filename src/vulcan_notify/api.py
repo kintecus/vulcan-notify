@@ -6,6 +6,7 @@ import calendar
 import logging
 import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from aiohttp import web
@@ -541,6 +542,12 @@ async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+async def handle_practice_index(request: web.Request) -> web.Response:
+    """Serve the practice webapp index. /practice -> /practice/ redirect handled here too."""
+    static_root = Path(__file__).parent / "static" / "practice"
+    return web.FileResponse(static_root / "index.html")
+
+
 def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/api/grades/average", handle_grades_average)
@@ -553,6 +560,13 @@ def create_app() -> web.Application:
     app.router.add_get("/api/messages", handle_messages)
     app.router.add_get("/api/exams", handle_exams)
     app.router.add_get("/api/health", handle_health)
+
+    # Kids practice webapp — vanilla JS SPA, content as static JSON files.
+    static_root = Path(__file__).parent / "static" / "practice"
+    if static_root.exists():
+        app.router.add_get("/practice", handle_practice_index)
+        app.router.add_get("/practice/", handle_practice_index)
+        app.router.add_static("/practice/", static_root, show_index=False)
     return app
 
 

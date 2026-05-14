@@ -1,0 +1,202 @@
+{
+  "id": "ulamki-zwykle-1",
+  "title": "Ułamki zwykłe — powtórzenie",
+  "subtitle": "Klasa 4 · matematyka · kartkówka 14.05.2026",
+  "topics": [
+    "Ułamki na osi liczbowej",
+    "Skracanie ułamków",
+    "Rozszerzanie ułamków",
+    "Porównywanie ułamków",
+    "Liczby mieszane"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{4}{8}$ do najprostszej postaci.",
+      "answer": "1/2",
+      "hint": "Podziel licznik i mianownik przez 4."
+    },
+    {
+      "id": 2,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{6}{9}$ do najprostszej postaci.",
+      "answer": "2/3",
+      "hint": "Wspólny dzielnik to 3."
+    },
+    {
+      "id": 3,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{10}{15}$.",
+      "answer": "2/3",
+      "hint": "Wspólny dzielnik to 5."
+    },
+    {
+      "id": 4,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{16}{24}$ do ułamka nieskracalnego.",
+      "answer": "2/3",
+      "hint": "Dzielimy przez 8 (lub przez 2 trzy razy)."
+    },
+    {
+      "id": 5,
+      "section": "Skracanie ułamków",
+      "type": "multi-mcq",
+      "prompt": "Które ułamki są **nieskracalne**? (Zaznacz wszystkie poprawne.)",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{3}{7}$", "correct": true },
+        { "id": "b", "label": "$\\dfrac{4}{6}$", "correct": false },
+        { "id": "c", "label": "$\\dfrac{5}{9}$", "correct": true },
+        { "id": "d", "label": "$\\dfrac{8}{12}$", "correct": false },
+        { "id": "e", "label": "$\\dfrac{11}{13}$", "correct": true }
+      ],
+      "hint": "Sprawdź, czy licznik i mianownik mają wspólny dzielnik większy od 1."
+    },
+    {
+      "id": 6,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz ułamek: $\\dfrac{1}{2} = \\dfrac{?}{8}$",
+      "answer": "4",
+      "hint": "Mnożysz mianownik przez 4, więc licznik też przez 4."
+    },
+    {
+      "id": 7,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz ułamek: $\\dfrac{2}{3} = \\dfrac{?}{12}$",
+      "answer": "8",
+      "hint": "Mianownik mnożymy przez 4, licznik też przez 4."
+    },
+    {
+      "id": 8,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz ułamek: $\\dfrac{3}{5} = \\dfrac{?}{20}$",
+      "answer": "12",
+      "hint": "Mianownik 5 × 4 = 20, więc licznik 3 × 4."
+    },
+    {
+      "id": 9,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz ułamek: $\\dfrac{3}{4} = \\dfrac{9}{?}$",
+      "answer": "12",
+      "hint": "Licznik 3 × 3 = 9, więc mianownik 4 × 3."
+    },
+    {
+      "id": 10,
+      "section": "Porównywanie ułamków",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{3}{7}\\;\\;\\square\\;\\;\\dfrac{5}{7}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": true },
+        { "id": "gt", "label": "$>$", "correct": false },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Te same mianowniki — większy licznik = większy ułamek."
+    },
+    {
+      "id": 11,
+      "section": "Porównywanie ułamków",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{3}{5}\\;\\;\\square\\;\\;\\dfrac{3}{8}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Te same liczniki — mniejszy mianownik = większy ułamek (dzielimy całość na mniej części)."
+    },
+    {
+      "id": 12,
+      "section": "Porównywanie ułamków",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{1}{2}\\;\\;\\square\\;\\;\\dfrac{2}{3}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": true },
+        { "id": "gt", "label": "$>$", "correct": false },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Rozszerz do wspólnego mianownika 6: $\\dfrac{1}{2} = \\dfrac{3}{6}$, $\\dfrac{2}{3} = \\dfrac{4}{6}$."
+    },
+    {
+      "id": 13,
+      "section": "Porównywanie ułamków",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{3}{4}\\;\\;\\square\\;\\;\\dfrac{5}{8}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Rozszerz $\\dfrac{3}{4}$ do mianownika 8."
+    },
+    {
+      "id": 14,
+      "section": "Porównywanie ułamków",
+      "type": "ordering",
+      "prompt": "Uporządkuj ułamki od **najmniejszego** do **największego**.",
+      "items": [
+        { "id": "a", "label": "$\\dfrac{1}{3}$" },
+        { "id": "b", "label": "$\\dfrac{2}{3}$" },
+        { "id": "c", "label": "$\\dfrac{1}{6}$" },
+        { "id": "d", "label": "$\\dfrac{5}{6}$" }
+      ],
+      "answer": ["c", "a", "b", "d"],
+      "hint": "Wspólny mianownik 6: $\\dfrac{1}{6}, \\dfrac{2}{6}, \\dfrac{4}{6}, \\dfrac{5}{6}$."
+    },
+    {
+      "id": 15,
+      "section": "Liczby mieszane",
+      "type": "numeric",
+      "prompt": "Zamień ułamek niewłaściwy $\\dfrac{7}{3}$ na liczbę mieszaną.",
+      "answer": "2 1/3",
+      "hint": "$7 \\div 3 = 2$ reszta $1$ → całość 2, ułamek $\\dfrac{1}{3}$."
+    },
+    {
+      "id": 16,
+      "section": "Liczby mieszane",
+      "type": "numeric",
+      "prompt": "Zamień ułamek niewłaściwy $\\dfrac{11}{4}$ na liczbę mieszaną.",
+      "answer": "2 3/4",
+      "hint": "$11 \\div 4 = 2$ reszta $3$."
+    },
+    {
+      "id": 17,
+      "section": "Liczby mieszane",
+      "type": "numeric",
+      "prompt": "Zamień liczbę mieszaną $1\\dfrac{2}{3}$ na ułamek niewłaściwy.",
+      "answer": "5/3",
+      "hint": "$1 \\cdot 3 + 2 = 5$, mianownik bez zmian."
+    },
+    {
+      "id": 18,
+      "section": "Liczby mieszane",
+      "type": "numeric",
+      "prompt": "Zamień liczbę mieszaną $2\\dfrac{3}{5}$ na ułamek niewłaściwy.",
+      "answer": "13/5",
+      "hint": "$2 \\cdot 5 + 3 = 13$."
+    },
+    {
+      "id": 19,
+      "section": "Ułamki na osi liczbowej",
+      "type": "numeric",
+      "prompt": "Jaki ułamek jest dokładnie **w połowie** między $\\dfrac{2}{5}$ a $\\dfrac{3}{5}$? (Zapisz z mianownikiem 10.)",
+      "answer": "5/10",
+      "hint": "Rozszerz obie wartości do mianownika 10: $\\dfrac{4}{10}$ i $\\dfrac{6}{10}$. Środek?"
+    },
+    {
+      "id": 20,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "Mama pokroiła tort na 12 kawałków. Solomiia zjadła 3, Yarema 2. Jaką część tortu zjadły dzieci? (Podaj w postaci ułamka, nieskracalnego.)",
+      "answer": "5/12",
+      "hint": "Razem zjadły $3 + 2 = 5$ kawałków z 12. Sprawdź, czy $\\dfrac{5}{12}$ da się skrócić."
+    }
+  ]
+}
