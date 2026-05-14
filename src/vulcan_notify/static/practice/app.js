@@ -179,6 +179,42 @@ const State = {
 };
 
 /* ============================================================
+ * Reset confirm — modal overlay, two buttons.
+ * ============================================================ */
+function confirmReset() {
+  // Don't stack overlays
+  if ($(".modal-backdrop")) return;
+  const backdrop = el("div", { class: "modal-backdrop" });
+  const dialog = el("div", { class: "modal" },
+    el("div", { class: "modal-title" }, "Zacząć od nowa?"),
+    el("div", { class: "modal-body" },
+      "Cały dotychczasowy postęp w tym zestawie zostanie wyzerowany. " +
+      "Tej operacji nie da się cofnąć."
+    ),
+    el("div", { class: "modal-actions" },
+      el("button", {
+        class: "btn btn-secondary",
+        onclick: () => backdrop.remove()
+      }, "Anuluj"),
+      el("button", {
+        class: "btn btn-danger",
+        onclick: () => {
+          State.reset();
+          State.view = "running";
+          State.currentIdx = 0;
+          backdrop.remove();
+          render();
+        }
+      }, "Tak, zeruj")
+    )
+  );
+  backdrop.appendChild(dialog);
+  // Tap on backdrop (outside dialog) cancels
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+  document.body.appendChild(backdrop);
+}
+
+/* ============================================================
  * Rendering
  * ============================================================ */
 function render() {
@@ -294,6 +330,11 @@ function renderRunning(root) {
     String(Math.max(0, State.setData.questions.length - State.failedCount()))
   );
   topbar.appendChild(lives);
+  topbar.appendChild(el("button", {
+    class: "topbar-reset",
+    onclick: confirmReset,
+    title: "Zacznij od nowa"
+  }, "↻"));
   root.appendChild(topbar);
 
   // Dots
