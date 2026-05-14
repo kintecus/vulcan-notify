@@ -1,0 +1,157 @@
+{
+  "id": "dzialania-pisemne-1",
+  "title": "Działania pisemne — trening",
+  "subtitle": "Klasa 4 · dodawanie, odejmowanie, mnożenie, dzielenie z resztą",
+  "topics": [
+    "Dodawanie pisemne",
+    "Odejmowanie pisemne",
+    "Mnożenie pisemne",
+    "Dzielenie z resztą"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Dodawanie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $234 + 567 = ?$",
+      "answer": "801",
+      "hint": "Dodaj jedności (4+7=11, pisz 1 przeniesienie 1), dziesiątki, setki."
+    },
+    {
+      "id": 2,
+      "section": "Dodawanie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $1486 + 729 = ?$",
+      "answer": "2215",
+      "hint": "Pamiętaj o przenoszeniu przy 6+9 i 8+2."
+    },
+    {
+      "id": 3,
+      "section": "Dodawanie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $375 + 248 + 96 = ?$",
+      "answer": "719",
+      "hint": "Możesz dodać po kolei: $(375+248) + 96$."
+    },
+    {
+      "id": 4,
+      "section": "Odejmowanie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $800 - 347 = ?$",
+      "answer": "453",
+      "hint": "Pożyczamy z setek: 0-7 nie da się, pożyczamy z dziesiątek (ale są 0), więc z setek."
+    },
+    {
+      "id": 5,
+      "section": "Odejmowanie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $1000 - 458 = ?$",
+      "answer": "542",
+      "hint": "Trzy razy pożyczamy z kolumn z zerami."
+    },
+    {
+      "id": 6,
+      "section": "Odejmowanie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $2543 - 1876 = ?$",
+      "answer": "667",
+      "hint": "Pożyczki w każdej kolumnie."
+    },
+    {
+      "id": 7,
+      "section": "Mnożenie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $46 \\cdot 7 = ?$",
+      "answer": "322",
+      "hint": "$7 \\cdot 6 = 42$ (pisz 2, przenieś 4); $7 \\cdot 4 = 28 + 4 = 32$."
+    },
+    {
+      "id": 8,
+      "section": "Mnożenie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $128 \\cdot 6 = ?$",
+      "answer": "768",
+      "hint": "$6 \\cdot 8 = 48$ (pisz 8, przenieś 4); $6 \\cdot 2 = 12 + 4 = 16$; $6 \\cdot 1 = 6 + 1 = 7$."
+    },
+    {
+      "id": 9,
+      "section": "Mnożenie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $234 \\cdot 5 = ?$",
+      "answer": "1170",
+      "hint": "$5 \\cdot 4 = 20$; $5 \\cdot 3 = 15+2 = 17$; $5 \\cdot 2 = 10+1 = 11$."
+    },
+    {
+      "id": 10,
+      "section": "Mnożenie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $89 \\cdot 9 = ?$",
+      "answer": "801",
+      "hint": "$9 \\cdot 9 = 81$; $9 \\cdot 8 = 72+8 = 80$."
+    },
+    {
+      "id": 11,
+      "section": "Dzielenie z resztą",
+      "type": "numeric",
+      "prompt": "Wykonaj: $47 : 6$. **Iloraz** to:",
+      "answer": "7",
+      "hint": "$6 \\cdot 7 = 42$; $47 - 42 = 5$ to reszta."
+    },
+    {
+      "id": 12,
+      "section": "Dzielenie z resztą",
+      "type": "numeric",
+      "prompt": "Wykonaj: $47 : 6$. **Reszta** to:",
+      "answer": "5",
+      "hint": "$47 = 6 \\cdot 7 + 5$."
+    },
+    {
+      "id": 13,
+      "section": "Dzielenie z resztą",
+      "type": "numeric",
+      "prompt": "Wykonaj: $85 : 9$. Iloraz to:",
+      "answer": "9",
+      "hint": "$9 \\cdot 9 = 81 \\leq 85$; $9 \\cdot 10 = 90 > 85$."
+    },
+    {
+      "id": 14,
+      "section": "Dzielenie z resztą",
+      "type": "numeric",
+      "prompt": "Wykonaj: $85 : 9$. Reszta to:",
+      "answer": "4",
+      "hint": "$85 - 81 = 4$."
+    },
+    {
+      "id": 15,
+      "section": "Dzielenie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $144 : 4 = ?$",
+      "answer": "36",
+      "hint": "$14 : 4 = 3$ r. 2; $24 : 4 = 6$."
+    },
+    {
+      "id": 16,
+      "section": "Dzielenie pisemne",
+      "type": "numeric",
+      "prompt": "Oblicz: $185 : 5 = ?$",
+      "answer": "37",
+      "hint": "$18 : 5 = 3$ r. 3; $35 : 5 = 7$."
+    },
+    {
+      "id": 17,
+      "section": "Zadanie tekstowe",
+      "type": "numeric",
+      "prompt": "W pudełku jest 96 cukierków. Trzeba je równo podzielić między 8 dzieci. Ile dostanie każde?",
+      "answer": "12",
+      "hint": "$96 : 8 = ?$"
+    },
+    {
+      "id": 18,
+      "section": "Zadanie tekstowe",
+      "type": "numeric",
+      "prompt": "Bilet do kina kosztuje 17 zł. Ile zapłaci klasa, w której jest 23 uczniów?",
+      "answer": "391",
+      "hint": "$17 \\cdot 23$: $17 \\cdot 20 = 340$ plus $17 \\cdot 3 = 51$, razem 391."
+    }
+  ]
+}

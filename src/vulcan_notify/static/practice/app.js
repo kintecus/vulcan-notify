@@ -9,7 +9,10 @@
 
 const STUDENTS = ["Solomiia", "Yarema"];
 const SETS = [
-  { id: "ulamki-zwykle-1", url: "./sets/ulamki-zwykle-1.json" }
+  { id: "ulamki-zwykle-1",     url: "./sets/ulamki-zwykle-1.json",     trackLabel: "TRACK 01 · LV.1" },
+  { id: "ulamki-zwykle-2",     url: "./sets/ulamki-zwykle-2.json",     trackLabel: "TRACK 02 · LV.2" },
+  { id: "ulamki-dziesietne-1", url: "./sets/ulamki-dziesietne-1.json", trackLabel: "TRACK 03 · LV.1" },
+  { id: "dzialania-pisemne-1", url: "./sets/dzialania-pisemne-1.json", trackLabel: "TRACK 04 · LV.1" }
 ];
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -186,10 +189,9 @@ function confirmReset() {
   if ($(".modal-backdrop")) return;
   const backdrop = el("div", { class: "modal-backdrop" });
   const dialog = el("div", { class: "modal" },
-    el("div", { class: "modal-title" }, "Zacząć od nowa?"),
+    el("div", { class: "modal-title" }, "restart stage?"),
     el("div", { class: "modal-body" },
-      "Cały dotychczasowy postęp w tym zestawie zostanie wyzerowany. " +
-      "Tej operacji nie da się cofnąć."
+      "Cały postęp w tym zestawie zostanie wyzerowany. Tej operacji nie cofniesz."
     ),
     el("div", { class: "modal-actions" },
       el("button", {
@@ -228,8 +230,9 @@ function render() {
 function renderWelcome(root) {
   if (!State.student) {
     const wrap = el("div", { class: "welcome" });
-    wrap.appendChild(el("h1", {}, "Cześć! 👋"));
-    wrap.appendChild(el("p", {}, "Wybierz uczennicę/ucznia:"));
+    wrap.appendChild(el("div", { class: "tagline" }, "PRESS ★ START"));
+    wrap.appendChild(el("h1", {}, "STAGE ☆ math"));
+    wrap.appendChild(el("p", {}, "Kto gra?"));
     for (const name of STUDENTS) {
       wrap.appendChild(el("button", {
         class: "student-btn",
@@ -242,17 +245,20 @@ function renderWelcome(root) {
 
   // Set picker
   const wrap = el("div", { class: "welcome" });
-  wrap.appendChild(el("h1", {}, `Hej, ${State.student}!`));
-  wrap.appendChild(el("p", {}, "Wybierz zestaw ćwiczeń:"));
+  wrap.appendChild(el("div", { class: "tagline" }, `★ player ${State.student.toLowerCase()} ★`));
+  wrap.appendChild(el("h1", {}, "wybierz set"));
+  wrap.appendChild(el("p", {}, "Każdy zestaw to nowy stage. Hearts = ile pomyłek możesz mieć. Powodzenia!"));
   const list = el("div", { class: "set-list" });
   // Preload set metadata for each
   for (const s of SETS) {
     const btn = el("button", { class: "set-btn", onclick: () => startSet(s) });
     const title = el("div", { class: "set-title" }, "…");
     const sub = el("div", { class: "set-sub" });
+    const trackBadge = el("div", { class: "set-track" }, s.trackLabel || "TRACK");
     const progBar = el("div", { class: "set-progress" });
     const progFill = el("div", { class: "set-progress-fill", style: "width: 0%" });
     progBar.appendChild(progFill);
+    btn.appendChild(trackBadge);
     btn.appendChild(title); btn.appendChild(sub); btn.appendChild(progBar);
     list.appendChild(btn);
 
@@ -276,7 +282,7 @@ function renderWelcome(root) {
     class: "set-btn",
     style: "margin-top: 24px; text-align: center; font-size: 14px; color: var(--gray-600); padding: 12px;",
     onclick: () => { State.student = null; localStorage.removeItem("practice.student"); render(); }
-  }, "Zmień użytkownika");
+  }, "switch player ⇆");
   wrap.appendChild(switchBtn);
 
   root.appendChild(wrap);
@@ -377,14 +383,14 @@ function renderRunning(root) {
   nav.appendChild(el("button", {
     class: "btn btn-secondary",
     onclick: () => { if (State.currentIdx > 0) { State.currentIdx--; State.save(); render(); } }
-  }, "← Wstecz"));
+  }, "← prev"));
   nav.appendChild(el("button", {
     class: "btn btn-secondary",
     onclick: () => {
       if (State.currentIdx < State.setData.questions.length - 1) { State.currentIdx++; State.save(); render(); }
       else if (State.isComplete()) { State.view = "summary"; render(); }
     }
-  }, "Dalej →"));
+  }, "next →"));
   root.appendChild(nav);
 }
 
@@ -681,7 +687,7 @@ function handleAnswer(q, qState, isCorrect, userAnswer, correctAnswerLabel) {
 function showSuccess() {
   const card = $(".card-wrap");
   const banner = el("div", { class: "feedback success feedback-result pop" });
-  banner.appendChild(el("div", { class: "feedback-title" }, "✓ Świetnie!"));
+  banner.appendChild(el("div", { class: "feedback-title" }, "★ PERFECT ★"));
   card.appendChild(banner);
   fireConfettiSmall();
 }
@@ -689,7 +695,7 @@ function showSuccess() {
 function showRetry(q) {
   const card = $(".card-wrap");
   const banner = el("div", { class: "feedback fail feedback-result" });
-  banner.appendChild(el("div", { class: "feedback-title" }, "Spróbuj jeszcze raz"));
+  banner.appendChild(el("div", { class: "feedback-title" }, "miss · spróbuj jeszcze raz"));
   if (q.hint) {
     const hint = el("div", { class: "feedback-hint" });
     hint.innerHTML = "💡 " + renderInlineMd(q.hint);
@@ -705,7 +711,7 @@ function showRetry(q) {
 function showFailure(q, correctLabel) {
   const card = $(".card-wrap");
   const banner = el("div", { class: "feedback fail feedback-result" });
-  banner.appendChild(el("div", { class: "feedback-title" }, "✗ Nieprawidłowo"));
+  banner.appendChild(el("div", { class: "feedback-title" }, "× game over · runda dalej"));
   const correctNode = el("div", { class: "feedback-hint" });
   correctNode.innerHTML = "Poprawna odpowiedź: <strong>" + renderInlineMd(String(correctLabel)) + "</strong>";
   banner.appendChild(correctNode);
@@ -717,7 +723,7 @@ function showFailure(q, correctLabel) {
   const nextBtn = el("button", {
     class: "btn btn-primary",
     onclick: () => moveNext()
-  }, "Dalej →");
+  }, "next stage →");
   banner.appendChild(nextBtn);
   card.appendChild(banner);
   renderMath(banner);
@@ -795,16 +801,16 @@ function renderSummary(root) {
   });
 
   const wrap = el("div", { class: "summary" });
-  let title, emoji;
-  if (pct === 100) { title = "Mistrz!"; emoji = "🏆"; }
-  else if (pct >= 80) { title = "Świetna robota!"; emoji = "⭐"; }
-  else if (pct >= 60) { title = "Dobrze!"; emoji = "👍"; }
-  else { title = "Trzeba poćwiczyć"; emoji = "💪"; }
+  let title, rank, tagline;
+  if (pct === 100) { title = "perfect run"; rank = "S+"; tagline = "전설 · legend status"; }
+  else if (pct >= 80) { title = "stage clear!"; rank = "S"; tagline = "★ comeback win ★"; }
+  else if (pct >= 60) { title = "stage clear"; rank = "A"; tagline = "good run · keep going"; }
+  else { title = "respawn soon"; rank = "B"; tagline = "powtórka · znowu od początku"; }
 
-  wrap.appendChild(el("div", { style: "font-size: 80px;" }, emoji));
+  wrap.appendChild(el("div", { class: "tagline" }, tagline));
   wrap.appendChild(el("h1", {}, title));
   wrap.appendChild(el("div", { class: "score-big" }, `${passed}/${total}`));
-  wrap.appendChild(el("div", { class: "score-line" }, `${pct}% poprawnych (za pierwszym lub drugim razem)`));
+  wrap.appendChild(el("div", { class: "score-line" }, `RANK ${rank} · ${pct}% Z PIERWSZEJ LUB DRUGIEJ PRÓBY`));
 
   const list = el("div", { class: "section-list" });
   for (const [sec, v] of Object.entries(sections)) {
@@ -824,13 +830,13 @@ function renderSummary(root) {
       State.currentIdx = 0;
       render();
     }
-  }, "Spróbuj ponownie");
+  }, "↻ replay stage");
   wrap.appendChild(retry);
 
   const back = el("button", {
     class: "btn btn-secondary",
     onclick: () => { State.view = "welcome"; render(); }
-  }, "Wróć do menu");
+  }, "← menu");
   wrap.appendChild(back);
 
   root.appendChild(wrap);

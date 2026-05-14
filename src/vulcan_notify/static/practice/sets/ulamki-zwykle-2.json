@@ -1,0 +1,149 @@
+{
+  "id": "ulamki-zwykle-2",
+  "title": "Ułamki zwykłe — poziom 2",
+  "subtitle": "Klasa 4 · trudniejsze: wspólny mianownik, dopełnianie",
+  "topics": [
+    "Wspólny mianownik",
+    "Dopełnianie do całości",
+    "Ułamki właściwe i niewłaściwe",
+    "Zadania tekstowe"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Wspólny mianownik",
+      "type": "numeric",
+      "prompt": "Sprowadź ułamki $\\dfrac{1}{4}$ i $\\dfrac{2}{3}$ do wspólnego mianownika **12**. Wpisz pierwszy ułamek w nowej postaci.",
+      "answer": "3/12",
+      "hint": "Mianownik 4 × 3 = 12, więc licznik 1 × 3."
+    },
+    {
+      "id": 2,
+      "section": "Wspólny mianownik",
+      "type": "numeric",
+      "prompt": "Drugi ułamek z poprzedniego zadania ($\\dfrac{2}{3}$) po sprowadzeniu do mianownika **12** to:",
+      "answer": "8/12",
+      "hint": "Mianownik 3 × 4 = 12, więc licznik 2 × 4."
+    },
+    {
+      "id": 3,
+      "section": "Wspólny mianownik",
+      "type": "mcq",
+      "prompt": "Który ułamek jest większy: $\\dfrac{3}{4}$ czy $\\dfrac{7}{10}$?",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{3}{4}$", "correct": true },
+        { "id": "b", "label": "$\\dfrac{7}{10}$", "correct": false },
+        { "id": "c", "label": "są równe", "correct": false }
+      ],
+      "hint": "Wspólny mianownik 20: $\\dfrac{15}{20}$ vs $\\dfrac{14}{20}$."
+    },
+    {
+      "id": 4,
+      "section": "Dopełnianie do całości",
+      "type": "numeric",
+      "prompt": "Ile brakuje ułamkowi $\\dfrac{3}{7}$ do **całości** (czyli do 1)? Podaj jako ułamek.",
+      "answer": "4/7",
+      "hint": "$1 = \\dfrac{7}{7}$, więc $\\dfrac{7}{7} - \\dfrac{3}{7}$."
+    },
+    {
+      "id": 5,
+      "section": "Dopełnianie do całości",
+      "type": "numeric",
+      "prompt": "Ile brakuje $\\dfrac{5}{12}$ do całości?",
+      "answer": "7/12",
+      "hint": "$1 = \\dfrac{12}{12}$."
+    },
+    {
+      "id": 6,
+      "section": "Ułamki właściwe i niewłaściwe",
+      "type": "multi-mcq",
+      "prompt": "Które ułamki są **niewłaściwe** (licznik ≥ mianownik)? Zaznacz wszystkie.",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{3}{5}$", "correct": false },
+        { "id": "b", "label": "$\\dfrac{7}{4}$", "correct": true },
+        { "id": "c", "label": "$\\dfrac{6}{6}$", "correct": true },
+        { "id": "d", "label": "$\\dfrac{8}{9}$", "correct": false },
+        { "id": "e", "label": "$\\dfrac{12}{5}$", "correct": true }
+      ],
+      "hint": "Niewłaściwe to takie, gdzie licznik jest większy lub równy mianownikowi."
+    },
+    {
+      "id": 7,
+      "section": "Liczby mieszane",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{17}{5}$ na liczbę mieszaną.",
+      "answer": "3 2/5",
+      "hint": "$17 \\div 5 = 3$ reszta $2$."
+    },
+    {
+      "id": 8,
+      "section": "Liczby mieszane",
+      "type": "numeric",
+      "prompt": "Zamień $3\\dfrac{4}{7}$ na ułamek niewłaściwy.",
+      "answer": "25/7",
+      "hint": "$3 \\cdot 7 + 4 = 25$."
+    },
+    {
+      "id": 9,
+      "section": "Liczby mieszane",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{22}{8}$ na liczbę mieszaną w **najprostszej** postaci (skróć ułamek).",
+      "answer": "2 3/4",
+      "hint": "$22 \\div 8 = 2$ reszta $6$, więc $2\\dfrac{6}{8} = 2\\dfrac{3}{4}$."
+    },
+    {
+      "id": 10,
+      "section": "Porównywanie",
+      "type": "ordering",
+      "prompt": "Uporządkuj od **najmniejszego** do **największego**.",
+      "items": [
+        { "id": "a", "label": "$\\dfrac{1}{2}$" },
+        { "id": "b", "label": "$\\dfrac{3}{4}$" },
+        { "id": "c", "label": "$\\dfrac{2}{8}$" },
+        { "id": "d", "label": "$\\dfrac{5}{8}$" }
+      ],
+      "answer": ["c", "a", "d", "b"],
+      "hint": "Wspólny mianownik 8: $\\dfrac{2}{8}, \\dfrac{4}{8}, \\dfrac{5}{8}, \\dfrac{6}{8}$."
+    },
+    {
+      "id": 11,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "Tort podzielono na 8 części. Solomiia zjadła $\\dfrac{1}{4}$ tortu, a Yarema $\\dfrac{3}{8}$. Ile **kawałków** zjadły razem?",
+      "answer": "5",
+      "hint": "$\\dfrac{1}{4} = \\dfrac{2}{8}$, więc razem $\\dfrac{2}{8} + \\dfrac{3}{8} = \\dfrac{5}{8}$ z 8 = 5."
+    },
+    {
+      "id": 12,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "Wstążka ma długość $\\dfrac{7}{10}$ metra. Mama odcięła $\\dfrac{3}{10}$ metra. Ile zostało? Podaj w postaci nieskracalnej.",
+      "answer": "2/5",
+      "hint": "$\\dfrac{7}{10} - \\dfrac{3}{10} = \\dfrac{4}{10}$, skróć przez 2."
+    },
+    {
+      "id": 13,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "W klasie jest 24 uczniów. $\\dfrac{1}{3}$ z nich gra w piłkę. Ile osób gra w piłkę?",
+      "answer": "8",
+      "hint": "$\\dfrac{1}{3}$ z 24 = $24 \\div 3$."
+    },
+    {
+      "id": 14,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "Z 30-osobowej klasy $\\dfrac{2}{5}$ jeździ na rowerze do szkoły. Ile osób to jest?",
+      "answer": "12",
+      "hint": "$\\dfrac{2}{5}$ z 30: najpierw $30 \\div 5 = 6$, potem $\\cdot 2$."
+    },
+    {
+      "id": 15,
+      "section": "Skracanie",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{24}{36}$ do nieskracalnej postaci.",
+      "answer": "2/3",
+      "hint": "Największy wspólny dzielnik 24 i 36 to 12."
+    }
+  ]
+}
