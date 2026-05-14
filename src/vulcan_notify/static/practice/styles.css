@@ -87,6 +87,60 @@ html, body {
 .topbar .lives-icon {
   font-size: 22px;
 }
+.topbar-reset {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--gray-200);
+  background: var(--card-bg);
+  color: var(--gray-600);
+  font-size: 22px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+.topbar-reset:active { background: var(--gray-100); transform: scale(0.92); }
+
+/* ============ Modal (confirm dialog) ============ */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: fadein 0.18s ease-out;
+}
+.modal {
+  background: var(--card-bg);
+  border-radius: 20px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  animation: pop 0.22s ease-out;
+}
+.modal-title {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  color: var(--gray-900);
+}
+.modal-body {
+  font-size: 17px;
+  color: var(--gray-600);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+.modal-actions {
+  display: flex;
+  gap: 12px;
+}
+.modal-actions .btn { flex: 1; }
+@keyframes fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 /* ============ Question dots (overview navigation) ============ */
 .dots {
