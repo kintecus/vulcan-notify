@@ -187,6 +187,71 @@ async def test_exams_days_ahead_extends_window(seeded_exams_db: Path) -> None:
     assert subjects == ["Polski", "Historia"]
 
 
+def test_grade_to_numeric_rejects_percent_diagnostics() -> None:
+    """Diagnoza results stored as '35 (%)' must not parse to 3.0."""
+    assert api_mod._grade_to_numeric("35 (%)") is None
+    assert api_mod._grade_to_numeric("86 (%)") is None
+    assert api_mod._grade_to_numeric("100%") is None
+    # Regular grades still parse correctly
+    assert api_mod._grade_to_numeric("3") == 3.0
+    assert api_mod._grade_to_numeric("5+") == 5.5
+    assert api_mod._grade_to_numeric("4-") == 3.75
+    assert api_mod._grade_to_numeric("6p") == 6.0
+    assert api_mod._grade_to_numeric("nb") is None
+
+
+@pytest.fixture
+async def seeded_diag_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Seed a DB with mix of regular grades and percent-style diagnostics."""
+    db_path = tmp_path / "diag.db"
+    monkeypatch.setattr(settings, "db_path", db_path)
+    database = Database(db_path)
+    await database.connect()
+    await database.upsert_student(
+        Student(key="S1", name="Solomiia", class_name="4E", school="Sz",
+                diary_id=1, mailbox_key=None),
+    )
+    today = datetime.now().strftime("%d.%m.%Y")
+    long_ago = (datetime.now() - timedelta(days=400)).strftime("%d.%m.%Y")
+    grades = [
+        (today, "4", 1, 201, "Matematyka"),
+        (today, "5", 1, 202, "Matematyka"),
+        (today, "35 (%)", 1, 203, "Matematyka"),
+        (long_ago, "80 (%)", 1, 204, "Matematyka"),
+    ]
+    for date, value, weight, col_id, subj in grades:
+        await database.upsert_grade(
+            "S1",
+            Grade(column_id=col_id, value=value, date=date, subject=subj,
+                  column_name="t", category="c", weight=weight, teacher="T",
+                  changed_since_login=False),
+        )
+    await database.db.commit()
+    await database.close()
+    return db_path
+
+
+async def test_grades_separates_diagnostics(seeded_diag_db: Path) -> None:
+    result = api_mod._get_grades(n=10)
+    sol = result["Solomiia"]
+    # Regular grades exclude any '%' value
+    assert all("%" not in g["value"] for g in sol["grades"])
+    assert len(sol["grades"]) == 2
+    # Recent diagnostic surfaced; long-ago one filtered by diagnostic_days window
+    assert len(sol["diagnostics"]) == 1
+    assert sol["diagnostics"][0]["value"] == "35 (%)"
+
+
+async def test_subject_averages_skips_diagnostics(seeded_diag_db: Path) -> None:
+    """A 35% diagnostic must not be parsed as grade 3."""
+    result = api_mod._get_subject_averages()
+    subjects = result["Solomiia"]["subjects"]
+    math = next(s for s in subjects if s["subject"] == "Matematyka")
+    # Only the 4 and 5 count -> avg 4.5, count 2
+    assert math["count"] == 2
+    assert math["average"] == 4.5
+
+
 def test_month_list_year_mode() -> None:
     out = api_mod._month_list(2025, months=6)
     assert out == [f"2025-{m:02d}" for m in range(1, 13)]
