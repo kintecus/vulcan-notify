@@ -1,0 +1,89 @@
+{
+  "id": "demo-typy-pytan",
+  "title": "Demo: nowe typy pytań",
+  "subtitle": "Test · prawda/fałsz, uzupełnianie, dopasowywanie, oś liczbowa",
+  "topics": [
+    "Prawda / Fałsz",
+    "Uzupełnij równanie",
+    "Dopasuj pary",
+    "Oś liczbowa"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Prawda / Fałsz",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{1}{2} = 0{,}5$?",
+      "answer": true,
+      "hint": "Zamień ułamek na ułamek dziesiętny."
+    },
+    {
+      "id": 2,
+      "section": "Prawda / Fałsz",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{3}{4}$ jest większe od $\\dfrac{4}{5}$?",
+      "answer": false,
+      "hint": "Sprowadź do wspólnego mianownika: 3/4 = 15/20, 4/5 = 16/20."
+    },
+    {
+      "id": 3,
+      "section": "Uzupełnij równanie",
+      "type": "numeric",
+      "template": "$2 + ___ = 5$",
+      "prompt": "Wpisz brakującą liczbę.",
+      "answer": "3",
+      "hint": "5 - 2 = ?"
+    },
+    {
+      "id": 4,
+      "section": "Uzupełnij równanie",
+      "type": "numeric",
+      "template": "$\\dfrac{1}{2}$ + ___ = $1$",
+      "prompt": "Jakiego ułamka brakuje?",
+      "answer": "1/2",
+      "hint": "Połowa plus połowa to całość."
+    },
+    {
+      "id": 5,
+      "section": "Dopasuj pary",
+      "type": "matching",
+      "prompt": "Połącz ułamek z jego postacią dziesiętną.",
+      "left": [
+        { "id": "a", "label": "$\\dfrac{1}{2}$" },
+        { "id": "b", "label": "$\\dfrac{1}{4}$" },
+        { "id": "c", "label": "$\\dfrac{3}{4}$" },
+        { "id": "d", "label": "$\\dfrac{1}{5}$" }
+      ],
+      "right": [
+        { "id": "1", "label": "0,25" },
+        { "id": "2", "label": "0,5" },
+        { "id": "3", "label": "0,2" },
+        { "id": "4", "label": "0,75" }
+      ],
+      "pairs": [["a", "2"], ["b", "1"], ["c", "4"], ["d", "3"]],
+      "hint": "Podziel licznik przez mianownik."
+    },
+    {
+      "id": 6,
+      "section": "Oś liczbowa",
+      "type": "numberline",
+      "prompt": "Zaznacz na osi $\\dfrac{1}{2}$.",
+      "min": 0,
+      "max": 2,
+      "step": 0.25,
+      "answer": 0.5,
+      "hint": "Połowa to środek między 0 a 1."
+    },
+    {
+      "id": 7,
+      "section": "Oś liczbowa",
+      "type": "numberline",
+      "prompt": "Zaznacz na osi liczbę 7.",
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "answer": 7,
+      "hint": "Policz kreski od 0."
+    }
+  ]
+}

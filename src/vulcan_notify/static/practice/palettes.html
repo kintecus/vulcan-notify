@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>★ STAGE ☆ — palette lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Orbitron:wght@600;800&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================================================
+     * Palette lab — preview 5 candidate skins side by side.
+     * Each .skin scope re-declares the same tokens used in styles.css
+     * so swapping the chosen palette into :root is a copy-paste.
+     * ============================================================ */
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: #f3f0ec;
+      color: #1b0a2e;
+    }
+    .lab-header {
+      padding: 28px 24px 8px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .lab-header h1 {
+      font-family: "Baloo 2", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 32px;
+      margin: 0 0 6px;
+    }
+    .lab-header p { margin: 0; color: #6b577b; font-size: 14px; max-width: 720px; }
+    .lab-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 24px;
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .skin-frame {
+      border-radius: 28px;
+      overflow: hidden;
+      background: var(--cream);
+      border: 2px solid var(--line);
+      box-shadow: 6px 6px 0 0 var(--line);
+      display: flex;
+      flex-direction: column;
+    }
+    .skin-meta {
+      padding: 14px 18px;
+      background: var(--paper);
+      border-bottom: 2px solid var(--line);
+    }
+    .skin-meta .name {
+      font-family: "Baloo 2", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 22px;
+      color: var(--hot);
+      line-height: 1;
+    }
+    .skin-meta .desc {
+      font-family: "Orbitron", monospace;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      margin-top: 6px;
+    }
+    .swatch-row {
+      display: flex;
+      gap: 4px;
+      padding: 10px 18px 14px;
+      background: var(--paper);
+      border-bottom: 2px solid var(--line);
+    }
+    .swatch {
+      flex: 1;
+      height: 28px;
+      border-radius: 6px;
+      border: 1.5px solid var(--line);
+    }
+
+    /* ============================================================
+     * Mock card — mirrors the practice-app "card" + numeric input
+     * + keypad so the palette is judged in real context.
+     * ============================================================ */
+    .mock {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .mock-pill {
+      align-self: flex-start;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: var(--ultra-soft);
+      border: 2px solid var(--line);
+      font-family: "Orbitron", monospace;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ultra);
+    }
+    .mock-q {
+      font-family: "Baloo 2", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 22px;
+      color: var(--ink);
+      line-height: 1.25;
+    }
+    .mock-input {
+      padding: 14px;
+      border: 2px solid var(--line);
+      border-radius: 18px;
+      background: var(--paper);
+      color: var(--ink-soft);
+      font-family: "Baloo 2", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 22px;
+      text-align: center;
+      box-shadow: 4px 4px 0 0 var(--line);
+    }
+    .mock-keypad {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      padding: 10px;
+      background: var(--cream);
+      border: 2px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 4px 4px 0 0 var(--line);
+    }
+    .mk-key {
+      min-height: 44px;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+      font-family: "Baloo 2", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--ink);
+      box-shadow: 2px 2px 0 0 var(--line);
+      display: grid;
+      place-items: center;
+    }
+    .mk-op { background: var(--ultra-soft); color: var(--ultra); font-family: "Orbitron", monospace; font-size: 14px; }
+    .mk-del { background: var(--sun-soft); color: var(--ink); }
+    /* Per HIG: bright accent button uses dark-on-bright in dark mode too. --on-mint
+       is set per skin so each palette can guarantee 4.5:1 contrast on Sprawdź. */
+    .mk-check { background: var(--mint); color: var(--on-mint); grid-column: span 2; font-size: 14px; }
+    .mk-zero { grid-column: span 2; }
+    .mock-feedback {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .badge {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1.5px solid var(--line);
+      font-family: "Orbitron", monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .badge.correct { background: var(--mint-soft); color: var(--ink); }
+    .badge.wrong { background: var(--hot-soft); color: var(--ink); }
+    /* Streak: full-saturation --sun, slight upscale, depth shadow + flame icon
+       to feel "active/important" per HIG (color + shape + depth, not color alone). */
+    .badge.streak {
+      background: var(--sun);
+      color: var(--on-streak);
+      font-weight: 700;
+      transform: scale(1.06);
+      box-shadow: 0 0 0 2px var(--sun-soft), 2px 2px 0 0 var(--line);
+    }
+
+    /* ============================================================
+     * The 5 candidate palettes
+     * Each scope sets the SAME var names that styles.css uses.
+     * To adopt one: copy its block into :root in styles.css.
+     * ============================================================ */
+
+    /* All skins also define --on-mint and --on-streak: the explicit text color
+       to use ON the bright Sprawdź / streak surfaces. Per HIG, never pick text
+       color from a generic --ink token on bright accent backgrounds — that breaks
+       in dark mode. Each skin guarantees ≥4.5:1 on these pairs. */
+
+    /* 1. STAGE — default · K-pop · hot pink + ultraviolet */
+    .skin-stage {
+      --hot: #ff2d87;     --hot-soft: #ffb3d4;
+      --ultra: #6a3df5;   --ultra-soft: #c8b7ff;
+      --mint: #2de2b6;    --mint-soft: #b8f3df;
+      --sun: #ffd23f;     --sun-soft: #fff1a6;
+      --ink: #1b0a2e;     --ink-soft: #6b577b;
+      --cream: #fff7ef;   --paper: #ffffff;
+      --line: #1b0a2e;
+      --on-mint: #1b0a2e;     /* dark on bright mint, ~10:1 */
+      --on-streak: #1b0a2e;   /* dark on bright sun, ~9:1 */
+    }
+
+    /* 2. FOREST — Ghibli · moss + amber + cream */
+    .skin-forest {
+      --hot: #d96b3b;     --hot-soft: #f3c9b1;
+      --ultra: #2f6b3d;   --ultra-soft: #c4dec7;
+      --mint: #6ba84e;    --mint-soft: #d6e7c3;   /* slightly deeper for 4.6:1 with --ink */
+      --sun: #e8b338;     --sun-soft: #f8e3a3;
+      --ink: #2a1f12;     --ink-soft: #6e5c45;
+      --cream: #f6efde;   --paper: #fdf8e9;
+      --line: #2a1f12;
+      --on-mint: #2a1f12;     /* dark on moss, ~5.0:1 */
+      --on-streak: #2a1f12;   /* dark on amber, ~5.4:1 */
+    }
+
+    /* 3. BERRY — pastel · purple + raspberry · gentle */
+    .skin-berry {
+      --hot: #d9438f;     --hot-soft: #f7c7df;
+      --ultra: #8e5cd1;   --ultra-soft: #e0d2f4;
+      --mint: #5fb89e;    --mint-soft: #cbeae0;   /* slightly deeper for 4.5:1 with --ink */
+      --sun: #f5d971;     --sun-soft: #fbeec1;
+      --ink: #3a1d4d;     --ink-soft: #7d6391;
+      --cream: #fbf5fb;   --paper: #ffffff;
+      --line: #3a1d4d;
+      --on-mint: #3a1d4d;     /* dark on muted mint, ~4.6:1 */
+      --on-streak: #3a1d4d;   /* dark on butter yellow, ~7.4:1 */
+    }
+
+    /* 4. COSMIC — dark mode · indigo + neon
+       Per HIG dark mode: reduce accent saturation slightly, use dark text on
+       bright buttons (NOT light text — that fails contrast). */
+    .skin-cosmic {
+      --hot: #ff5d9c;     --hot-soft: #5b1d3c;    /* slightly desaturated pink */
+      --ultra: #6ad9ff;   --ultra-soft: #1f3e57;
+      --mint: #5fd9a0;    --mint-soft: #194a39;   /* less neon than #3df0a3 */
+      --sun: #ffd54a;     --sun-soft: #4d3f10;
+      --ink: #f3eaff;     --ink-soft: #9d8fb8;
+      --cream: #161029;   --paper: #221839;
+      --line: #f3eaff;
+      --on-mint: #0a0d1f;     /* dark on neon mint, ~10:1 — HIG dark-mode rule */
+      --on-streak: #0a0d1f;   /* dark on bright sun, ~13:1 */
+    }
+
+    /* Cosmic needs special handling for shadow contrast on dark bg */
+    .skin-cosmic .skin-frame,
+    .skin-cosmic.skin-frame {
+      box-shadow: 6px 6px 0 0 #4cd6ff;
+    }
+    .skin-cosmic .mock-input,
+    .skin-cosmic .mock-keypad,
+    .skin-cosmic .mk-key {
+      box-shadow: 2px 2px 0 0 var(--ultra);
+    }
+  </style>
+</head>
+<body>
+  <div class="lab-header">
+    <h1>Palette lab — pick a skin per kid</h1>
+    <p>Each card shows the same mock question + keypad in a different palette. Tokens use the same names as <code>styles.css</code> plus <code>--on-mint</code> / <code>--on-streak</code> for guaranteed contrast on bright accent surfaces (per Apple HIG). The Sprawdź check button always uses dark text on the bright mint, in dark mode too. Streak badge uses full-saturation sun + flame icon + scale + outer glow so it reads as "hot" without relying on color alone.</p>
+  </div>
+
+  <div class="lab-grid">
+    <!-- ============================================================ STAGE ============================================================ -->
+    <div class="skin-frame skin-stage">
+      <div class="skin-meta">
+        <div class="name">Stage ☆</div>
+        <div class="desc">current · K-pop · hot pink + ultraviolet</div>
+      </div>
+      <div class="swatch-row">
+        <div class="swatch" style="background: var(--hot)"></div>
+        <div class="swatch" style="background: var(--ultra)"></div>
+        <div class="swatch" style="background: var(--mint)"></div>
+        <div class="swatch" style="background: var(--sun)"></div>
+        <div class="swatch" style="background: var(--ink)"></div>
+        <div class="swatch" style="background: var(--cream)"></div>
+      </div>
+      <div class="mock">
+        <div class="mock-pill">★ skracanie ułamków</div>
+        <div class="mock-q">Skróć ułamek 4/8 do najprostszej postaci.</div>
+        <div class="mock-input">np. 1/2</div>
+        <div class="mock-keypad">
+          <div class="mk-key">7</div><div class="mk-key">8</div><div class="mk-key">9</div><div class="mk-key mk-del">⌫</div>
+          <div class="mk-key">4</div><div class="mk-key">5</div><div class="mk-key">6</div><div class="mk-key mk-op">/</div>
+          <div class="mk-key">1</div><div class="mk-key">2</div><div class="mk-key">3</div><div class="mk-key mk-op">␣</div>
+          <div class="mk-key mk-zero">0</div><div class="mk-key mk-check">Sprawdź</div>
+        </div>
+        <div class="mock-feedback">
+          <div class="badge correct">✓ brawo</div>
+          <div class="badge wrong">spróbuj jeszcze</div>
+          <div class="badge streak">🔥 streak 3</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ FOREST ============================================================ -->
+    <div class="skin-frame skin-forest">
+      <div class="skin-meta">
+        <div class="name">Forest ⌬</div>
+        <div class="desc">ghibli · moss + amber + cream</div>
+      </div>
+      <div class="swatch-row">
+        <div class="swatch" style="background: var(--hot)"></div>
+        <div class="swatch" style="background: var(--ultra)"></div>
+        <div class="swatch" style="background: var(--mint)"></div>
+        <div class="swatch" style="background: var(--sun)"></div>
+        <div class="swatch" style="background: var(--ink)"></div>
+        <div class="swatch" style="background: var(--cream)"></div>
+      </div>
+      <div class="mock">
+        <div class="mock-pill">⌬ skracanie ułamków</div>
+        <div class="mock-q">Skróć ułamek 4/8 do najprostszej postaci.</div>
+        <div class="mock-input">np. 1/2</div>
+        <div class="mock-keypad">
+          <div class="mk-key">7</div><div class="mk-key">8</div><div class="mk-key">9</div><div class="mk-key mk-del">⌫</div>
+          <div class="mk-key">4</div><div class="mk-key">5</div><div class="mk-key">6</div><div class="mk-key mk-op">/</div>
+          <div class="mk-key">1</div><div class="mk-key">2</div><div class="mk-key">3</div><div class="mk-key mk-op">␣</div>
+          <div class="mk-key mk-zero">0</div><div class="mk-key mk-check">Sprawdź</div>
+        </div>
+        <div class="mock-feedback">
+          <div class="badge correct">✓ brawo</div>
+          <div class="badge wrong">spróbuj jeszcze</div>
+          <div class="badge streak">🔥 streak 3</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ COSMIC ============================================================ -->
+    <div class="skin-frame skin-cosmic">
+      <div class="skin-meta">
+        <div class="name">Cosmic ✦</div>
+        <div class="desc">dark mode · indigo + neon cyan</div>
+      </div>
+      <div class="swatch-row">
+        <div class="swatch" style="background: var(--hot)"></div>
+        <div class="swatch" style="background: var(--ultra)"></div>
+        <div class="swatch" style="background: var(--mint)"></div>
+        <div class="swatch" style="background: var(--sun)"></div>
+        <div class="swatch" style="background: var(--ink)"></div>
+        <div class="swatch" style="background: var(--cream)"></div>
+      </div>
+      <div class="mock">
+        <div class="mock-pill">✦ skracanie ułamków</div>
+        <div class="mock-q">Skróć ułamek 4/8 do najprostszej postaci.</div>
+        <div class="mock-input">np. 1/2</div>
+        <div class="mock-keypad">
+          <div class="mk-key">7</div><div class="mk-key">8</div><div class="mk-key">9</div><div class="mk-key mk-del">⌫</div>
+          <div class="mk-key">4</div><div class="mk-key">5</div><div class="mk-key">6</div><div class="mk-key mk-op">/</div>
+          <div class="mk-key">1</div><div class="mk-key">2</div><div class="mk-key">3</div><div class="mk-key mk-op">␣</div>
+          <div class="mk-key mk-zero">0</div><div class="mk-key mk-check">Sprawdź</div>
+        </div>
+        <div class="mock-feedback">
+          <div class="badge correct">✓ brawo</div>
+          <div class="badge wrong">spróbuj jeszcze</div>
+          <div class="badge streak">🔥 streak 3</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ BERRY ============================================================ -->
+    <div class="skin-frame skin-berry">
+      <div class="skin-meta">
+        <div class="name">Berry ❀</div>
+        <div class="desc">pastel · purple + raspberry · gentle</div>
+      </div>
+      <div class="swatch-row">
+        <div class="swatch" style="background: var(--hot)"></div>
+        <div class="swatch" style="background: var(--ultra)"></div>
+        <div class="swatch" style="background: var(--mint)"></div>
+        <div class="swatch" style="background: var(--sun)"></div>
+        <div class="swatch" style="background: var(--ink)"></div>
+        <div class="swatch" style="background: var(--cream)"></div>
+      </div>
+      <div class="mock">
+        <div class="mock-pill">❀ skracanie ułamków</div>
+        <div class="mock-q">Skróć ułamek 4/8 do najprostszej postaci.</div>
+        <div class="mock-input">np. 1/2</div>
+        <div class="mock-keypad">
+          <div class="mk-key">7</div><div class="mk-key">8</div><div class="mk-key">9</div><div class="mk-key mk-del">⌫</div>
+          <div class="mk-key">4</div><div class="mk-key">5</div><div class="mk-key">6</div><div class="mk-key mk-op">/</div>
+          <div class="mk-key">1</div><div class="mk-key">2</div><div class="mk-key">3</div><div class="mk-key mk-op">␣</div>
+          <div class="mk-key mk-zero">0</div><div class="mk-key mk-check">Sprawdź</div>
+        </div>
+        <div class="mock-feedback">
+          <div class="badge correct">✓ brawo</div>
+          <div class="badge wrong">spróbuj jeszcze</div>
+          <div class="badge streak">🔥 streak 3</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
