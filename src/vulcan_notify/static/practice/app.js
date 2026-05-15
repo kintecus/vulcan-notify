@@ -8,11 +8,35 @@
  * ============================================================ */
 
 const STUDENTS = ["Solomiia", "Yarema"];
+const SKINS = [
+  { id: "stage",  name: "Stage",  tagline: "K-pop · pink + violet",  swatches: ["#ff2d87", "#6a3df5", "#2de2b6", "#ffd23f"] },
+  { id: "forest", name: "Forest", tagline: "Ghibli · moss + amber",  swatches: ["#d96b3b", "#2f6b3d", "#6ba84e", "#e8b338"] },
+  { id: "berry",  name: "Berry",  tagline: "Pastel · purple + pink", swatches: ["#d9438f", "#8e5cd1", "#5fb89e", "#f5d971"] },
+  { id: "cosmic", name: "Cosmic", tagline: "Dark mode · neon",       swatches: ["#ff5d9c", "#6ad9ff", "#5fd9a0", "#ffd54a"] },
+];
+const SKIN_IDS = new Set(SKINS.map(s => s.id));
+const skinKey = (student) => `practice.skin.${student}`;
+function getSkin(student) {
+  const v = student && localStorage.getItem(skinKey(student));
+  return SKIN_IDS.has(v) ? v : "stage";
+}
+function setSkin(student, id) {
+  if (!student || !SKIN_IDS.has(id)) return;
+  localStorage.setItem(skinKey(student), id);
+  applySkin(id);
+}
+function applySkin(id) {
+  // Remove any existing skin-* class, then apply the chosen one.
+  document.body.classList.forEach(c => { if (c.startsWith("skin-")) document.body.classList.remove(c); });
+  document.body.classList.add(`skin-${id}`);
+}
+
 const SETS = [
   { id: "ulamki-zwykle-1",     url: "./sets/ulamki-zwykle-1.json",     trackLabel: "TRACK 01 · LV.1" },
   { id: "ulamki-zwykle-2",     url: "./sets/ulamki-zwykle-2.json",     trackLabel: "TRACK 02 · LV.2" },
   { id: "ulamki-dziesietne-1", url: "./sets/ulamki-dziesietne-1.json", trackLabel: "TRACK 03 · LV.1" },
-  { id: "dzialania-pisemne-1", url: "./sets/dzialania-pisemne-1.json", trackLabel: "TRACK 04 · LV.1" }
+  { id: "dzialania-pisemne-1", url: "./sets/dzialania-pisemne-1.json", trackLabel: "TRACK 04 · LV.1" },
+  { id: "demo-typy-pytan",     url: "./sets/demo-typy-pytan.json",     trackLabel: "DEMO · NEW Q" }
 ];
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -236,7 +260,12 @@ function renderWelcome(root) {
     for (const name of STUDENTS) {
       wrap.appendChild(el("button", {
         class: "student-btn",
-        onclick: () => { State.student = name; localStorage.setItem("practice.student", name); render(); }
+        onclick: () => {
+          State.student = name;
+          localStorage.setItem("practice.student", name);
+          applySkin(getSkin(name));
+          render();
+        }
       }, name));
     }
     root.appendChild(wrap);
@@ -246,6 +275,27 @@ function renderWelcome(root) {
   // Set picker
   const wrap = el("div", { class: "welcome" });
   wrap.appendChild(el("div", { class: "tagline" }, `★ player ${State.student.toLowerCase()} ★`));
+
+  // Skin picker — 4 small cards with name + tagline + swatches.
+  const currentSkin = getSkin(State.student);
+  const skinRow = el("div", { class: "skin-picker" });
+  for (const skin of SKINS) {
+    const isCurrent = skin.id === currentSkin;
+    const card = el("button", {
+      class: "skin-card" + (isCurrent ? " is-current" : ""),
+      "aria-pressed": isCurrent ? "true" : "false",
+      "aria-label": `Skin ${skin.name}`,
+      onclick: () => { setSkin(State.student, skin.id); render(); }
+    });
+    const swatches = el("div", { class: "skin-swatches" });
+    for (const c of skin.swatches) swatches.appendChild(el("span", { class: "skin-swatch", style: `background:${c}` }));
+    card.appendChild(swatches);
+    card.appendChild(el("div", { class: "skin-name" }, skin.name));
+    card.appendChild(el("div", { class: "skin-tag" }, skin.tagline));
+    skinRow.appendChild(card);
+  }
+  wrap.appendChild(skinRow);
+
   wrap.appendChild(el("h1", {}, "wybierz set"));
   wrap.appendChild(el("p", {}, "Każdy zestaw to nowy stage. Hearts = ile pomyłek możesz mieć. Powodzenia!"));
   const list = el("div", { class: "set-list" });
@@ -281,7 +331,12 @@ function renderWelcome(root) {
   const switchBtn = el("button", {
     class: "set-btn",
     style: "margin-top: 24px; text-align: center; font-size: 14px; color: var(--gray-600); padding: 12px;",
-    onclick: () => { State.student = null; localStorage.removeItem("practice.student"); render(); }
+    onclick: () => {
+      State.student = null;
+      localStorage.removeItem("practice.student");
+      applySkin("stage");  // back to default until a player is picked again
+      render();
+    }
   }, "switch player ⇆");
   wrap.appendChild(switchBtn);
 
@@ -372,6 +427,9 @@ function renderRunning(root) {
   else if (q.type === "multi-mcq") answerArea = renderMultiMCQ(q, qState, locked);
   else if (q.type === "numeric") answerArea = renderNumeric(q, qState, locked);
   else if (q.type === "ordering") answerArea = renderOrdering(q, qState, locked);
+  else if (q.type === "truefalse") answerArea = renderTrueFalse(q, qState, locked);
+  else if (q.type === "matching") answerArea = renderMatching(q, qState, locked);
+  else if (q.type === "numberline") answerArea = renderNumberLine(q, qState, locked);
   else answerArea = el("div", {}, "Nieobsługiwany typ pytania");
 
   card.appendChild(answerArea);
@@ -506,13 +564,39 @@ function renderMultiMCQ(q, qState, locked) {
  * ============================================================ */
 function renderNumeric(q, qState, locked) {
   const wrap = el("div", { class: "numeric-input" });
+
+  // Optional fill-in-the-blank template. e.g. "2 + ___ = 5" or "$\\dfrac{1}{2} + $___$ = 1$".
+  // Renders above the input. Blank live-replaces with the typed value.
+  // We split on ___ FIRST so KaTeX can render each math segment cleanly without
+  // an HTML span breaking the $...$ block.
+  const hasTemplate = typeof q.template === "string" && q.template.includes("___");
+  const tplEl = hasTemplate ? el("div", { class: "numeric-template" }) : null;
+  const renderTemplate = (val) => {
+    if (!tplEl) return;
+    tplEl.innerHTML = "";
+    const [before, after = ""] = q.template.split("___");
+    const beforeEl = el("span", { html: renderInlineMd(before) });
+    const fillEl = val
+      ? el("span", { class: "numeric-template-fill" }, val)
+      : el("span", { class: "numeric-template-blank" }, "___");
+    const afterEl = el("span", { html: renderInlineMd(after) });
+    tplEl.appendChild(beforeEl);
+    tplEl.appendChild(fillEl);
+    tplEl.appendChild(afterEl);
+    renderMath(tplEl);
+  };
+  if (tplEl) wrap.appendChild(tplEl);
+
+  // Display field — read-only on touch, all input via custom keypad below.
+  // inputmode="none" tells iOS not to show the system keyboard even when focused.
   const input = el("input", {
     type: "text",
-    inputmode: "text",
+    inputmode: "none",
     autocomplete: "off",
     autocorrect: "off",
     spellcheck: "false",
     placeholder: q.answer.includes("/") ? "np. 1/2" : "wpisz odpowiedź",
+    readonly: true,
     disabled: locked
   });
   if (locked) {
@@ -524,34 +608,72 @@ function renderNumeric(q, qState, locked) {
       input.classList.add("wrong");
     }
   }
+  renderTemplate(input.value);
   wrap.appendChild(input);
   wrap.appendChild(el("div", { class: "hint-help" },
     "Ułamek wpisz jako np. 1/2. Liczba mieszana: 1 1/2."
   ));
 
-  const submitBar = el("div", { class: "feedback" });
-  const checkBtn = el("button", {
-    class: "btn btn-primary",
-    disabled: locked,
-    onclick: () => {
-      const raw = input.value.trim();
-      if (!raw) return;
-      const correct = answersEqual(raw, q.answer);
-      if (!correct) {
-        input.classList.remove("correct");
-        input.classList.add("wrong");
-        setTimeout(() => input.classList.remove("wrong"), 600);
-      }
-      handleAnswer(q, qState, correct, raw, q.answer);
+  const submit = () => {
+    const raw = input.value.trim();
+    if (!raw) return;
+    const correct = answersEqual(raw, q.answer);
+    if (!correct) {
+      input.classList.remove("correct");
+      input.classList.add("wrong");
+      setTimeout(() => input.classList.remove("wrong"), 600);
     }
-  }, "Sprawdź");
+    handleAnswer(q, qState, correct, raw, q.answer);
+  };
+
+  // Custom on-screen keypad. iOS native number pad has no '/', so we roll our own.
+  // Calculator layout (7-8-9 top) to match iOS .numberPad. 56pt+ tap targets per HIG.
+  const press = (fn) => (e) => {
+    e.preventDefault();
+    if (locked) return;
+    if (navigator.vibrate) navigator.vibrate(8);
+    fn();
+  };
+  const insert = (ch) => { input.value = input.value + ch; renderTemplate(input.value); };
+  const backspace = () => { input.value = input.value.slice(0, -1); renderTemplate(input.value); };
+
+  const mkKey = (label, kind, onPress, opts = {}) => {
+    const cls = "kp-key kp-" + kind + (opts.wide ? " kp-wide" : "");
+    return el("button", {
+      type: "button",
+      class: cls,
+      disabled: locked,
+      "aria-label": opts.ariaLabel || label,
+      ontouchstart: press(onPress),
+      onclick: (e) => { if (e.detail === 0 || !("ontouchstart" in window)) press(onPress)(e); }
+    }, label);
+  };
+
+  // Calculator layout: digits 7-8-9 / 4-5-6 / 1-2-3 in left 3 cols, ops in 4th col,
+  // bottom row: 0 (wide-2), then Sprawdź (wide-2). Backspace top-right, /  middle-right,
+  // space bottom-right of the op column.
+  const keypad = el("div", { class: "keypad", role: "group", "aria-label": "Klawiatura numeryczna" },
+    mkKey("7", "num", () => insert("7")),
+    mkKey("8", "num", () => insert("8")),
+    mkKey("9", "num", () => insert("9")),
+    mkKey("⌫", "del", backspace, { ariaLabel: "Cofnij" }),
+    mkKey("4", "num", () => insert("4")),
+    mkKey("5", "num", () => insert("5")),
+    mkKey("6", "num", () => insert("6")),
+    mkKey("/", "op", () => insert("/"), { ariaLabel: "Kreska ułamkowa" }),
+    mkKey("1", "num", () => insert("1")),
+    mkKey("2", "num", () => insert("2")),
+    mkKey("3", "num", () => insert("3")),
+    mkKey("␣", "op", () => insert(" "), { ariaLabel: "Spacja" }),
+    mkKey("0", "num", () => insert("0"), { wide: true }),
+    mkKey("Sprawdź", "check", submit, { ariaLabel: "Sprawdź odpowiedź", wide: true })
+  );
+  wrap.appendChild(keypad);
+
+  // Hardware keyboard support kept for desktop testing (and external iPad keyboards).
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); checkBtn.click(); }
+    if (e.key === "Enter") { e.preventDefault(); submit(); }
   });
-  submitBar.appendChild(checkBtn);
-  wrap.appendChild(submitBar);
-  // Auto-focus when not locked
-  if (!locked) setTimeout(() => input.focus(), 100);
   return wrap;
 }
 
@@ -648,6 +770,252 @@ function renderOrdering(q, qState, locked) {
   submitBar.appendChild(checkBtn);
   wrap.appendChild(submitBar);
   return wrap;
+}
+
+/* ============================================================
+ * True / False — q.answer is boolean. Two big buttons, instant submit.
+ * ============================================================ */
+function renderTrueFalse(q, qState, locked) {
+  const wrap = el("div", { class: "tf-wrap" });
+  const labels = [
+    { val: true,  text: "PRAWDA",   cls: "tf-true" },
+    { val: false, text: "FAŁSZ",    cls: "tf-false" }
+  ];
+  for (const opt of labels) {
+    const btn = el("button", {
+      class: "tf-btn " + opt.cls + (locked && qState.lastAnswer === opt.val ? (qState.status === "passed" ? " correct" : " wrong") : "") +
+             (locked && q.answer === opt.val ? " is-answer" : ""),
+      disabled: locked,
+      onclick: () => {
+        if (locked) return;
+        const correct = opt.val === q.answer;
+        handleAnswer(q, qState, correct, opt.val, q.answer ? "PRAWDA" : "FAŁSZ");
+      }
+    }, opt.text);
+    wrap.appendChild(btn);
+  }
+  return wrap;
+}
+
+/* ============================================================
+ * Matching pairs — q.left[] and q.right[] each have id + label,
+ * plus q.pairs[] = [[leftId, rightId], …]. Tap left then right
+ * to pair; same color highlights both. Submit when all paired.
+ * ============================================================ */
+function renderMatching(q, qState, locked) {
+  const wrap = el("div", { class: "matching-wrap" });
+  // Inline how-to so kids know what to tap. Disappears once they make their first pairing.
+  const hint = el("div", { class: "matching-hint" }, "Stuknij ułamek po lewej, potem jego parę po prawej.");
+  wrap.appendChild(hint);
+  const grid = el("div", { class: "matching" });
+  // Pair colors cycle through these so each pair is visually distinct.
+  const PAIR_COLORS = ["var(--hot)", "var(--ultra)", "var(--mint)", "var(--sun)", "#ff8a3d", "#3da6ff"];
+  const leftEls = new Map();   // id -> button
+  const rightEls = new Map();  // id -> button
+  const pairings = new Map();  // leftId -> rightId
+  let pendingLeft = null;
+
+  const correctMap = new Map(q.pairs.map(([l, r]) => [l, r]));
+  // Pre-fill from saved state (replay on locked)
+  if (locked && qState.lastAnswer) {
+    try {
+      const saved = JSON.parse(qState.lastAnswer);
+      for (const [l, r] of saved) pairings.set(l, r);
+    } catch {}
+  }
+
+  const leftCol = el("div", { class: "matching-col" });
+  const rightCol = el("div", { class: "matching-col" });
+
+  const colorFor = (leftId) => {
+    const idx = [...pairings.keys()].indexOf(leftId);
+    return idx >= 0 ? PAIR_COLORS[idx % PAIR_COLORS.length] : null;
+  };
+
+  const refresh = () => {
+    leftEls.forEach((btn, id) => {
+      const c = colorFor(id);
+      btn.classList.toggle("paired", !!c);
+      btn.classList.toggle("pending", pendingLeft === id);
+      btn.style.setProperty("--pair-color", c || "transparent");
+      // Locked feedback colors
+      if (locked) {
+        btn.classList.toggle("correct", pairings.get(id) === correctMap.get(id));
+        btn.classList.toggle("wrong", pairings.get(id) && pairings.get(id) !== correctMap.get(id));
+      }
+    });
+    rightEls.forEach((btn, id) => {
+      const leftId = [...pairings.entries()].find(([, r]) => r === id)?.[0];
+      const c = leftId ? colorFor(leftId) : null;
+      btn.classList.toggle("paired", !!c);
+      btn.style.setProperty("--pair-color", c || "transparent");
+      if (locked) {
+        const isCorrectTarget = leftId && correctMap.get(leftId) === id;
+        btn.classList.toggle("correct", isCorrectTarget);
+        btn.classList.toggle("wrong", leftId && !isCorrectTarget);
+      }
+    });
+    checkBtn.disabled = locked || pairings.size !== q.left.length;
+    // Hide instruction hint once the kid figures out the mechanic (first pair made).
+    hint.classList.toggle("hidden", pairings.size > 0 || pendingLeft != null);
+  };
+
+  for (const item of q.left) {
+    const btn = el("button", {
+      class: "match-card match-left",
+      disabled: locked,
+      html: renderInlineMd(item.label),
+      onclick: () => {
+        if (locked) return;
+        // Tapping an already-paired left clears it.
+        if (pairings.has(item.id)) { pairings.delete(item.id); pendingLeft = null; refresh(); return; }
+        pendingLeft = pendingLeft === item.id ? null : item.id;
+        refresh();
+      }
+    });
+    leftEls.set(item.id, btn);
+    leftCol.appendChild(btn);
+  }
+  for (const item of q.right) {
+    const btn = el("button", {
+      class: "match-card match-right",
+      disabled: locked,
+      html: renderInlineMd(item.label),
+      onclick: () => {
+        if (locked) return;
+        // Tapping an already-paired right clears it.
+        const owner = [...pairings.entries()].find(([, r]) => r === item.id)?.[0];
+        if (owner) { pairings.delete(owner); refresh(); return; }
+        if (pendingLeft == null) return;
+        pairings.set(pendingLeft, item.id);
+        pendingLeft = null;
+        refresh();
+      }
+    });
+    rightEls.set(item.id, btn);
+    rightCol.appendChild(btn);
+  }
+
+  grid.appendChild(leftCol);
+  grid.appendChild(rightCol);
+  wrap.appendChild(grid);
+
+  const submitBar = el("div", { class: "feedback" });
+  const checkBtn = el("button", {
+    class: "btn btn-primary",
+    disabled: true,
+    onclick: () => {
+      const allCorrect = q.left.every(item => pairings.get(item.id) === correctMap.get(item.id));
+      const userAnswer = JSON.stringify([...pairings.entries()]);
+      const correctLabel = q.pairs.map(([l, r]) => {
+        const ll = q.left.find(x => x.id === l)?.label || l;
+        const rr = q.right.find(x => x.id === r)?.label || r;
+        return `${ll} = ${rr}`;
+      }).join(", ");
+      handleAnswer(q, qState, allCorrect, userAnswer, correctLabel);
+    }
+  }, "Sprawdź");
+  submitBar.appendChild(checkBtn);
+  wrap.appendChild(submitBar);
+
+  refresh();
+  renderMath(wrap);
+  return wrap;
+}
+
+/* ============================================================
+ * Number-line tap — q has min, max, step, answer (target value).
+ * Tap on the line snaps to nearest tick. Submit validates.
+ * ============================================================ */
+function renderNumberLine(q, qState, locked) {
+  const wrap = el("div", { class: "numline-wrap" });
+  const min = q.min, max = q.max, step = q.step ?? 1;
+  const ticks = [];
+  for (let v = min; v <= max + 1e-9; v += step) ticks.push(Number(v.toFixed(6)));
+
+  const line = el("div", { class: "numline" });
+  const track = el("div", { class: "numline-track" });
+  const marker = el("div", { class: "numline-marker hidden" });
+  let chosen = null;
+
+  // Restore prior selection on locked
+  if (locked && qState.lastAnswer != null) {
+    chosen = Number(qState.lastAnswer);
+  }
+
+  const tickBar = el("div", { class: "numline-ticks" });
+  ticks.forEach((v, i) => {
+    const t = el("div", { class: "numline-tick" });
+    const pct = ((v - min) / (max - min)) * 100;
+    t.style.left = pct + "%";
+    const lbl = el("div", { class: "numline-tick-label" }, formatTickLabel(v));
+    t.appendChild(lbl);
+    tickBar.appendChild(t);
+  });
+
+  const positionMarker = (val) => {
+    const pct = ((val - min) / (max - min)) * 100;
+    marker.style.left = pct + "%";
+    marker.classList.remove("hidden");
+    if (locked) {
+      marker.classList.toggle("correct", Math.abs(val - q.answer) < 1e-9);
+      marker.classList.toggle("wrong",   Math.abs(val - q.answer) >= 1e-9);
+    }
+  };
+
+  const onTap = (e) => {
+    if (locked) return;
+    const rect = track.getBoundingClientRect();
+    const x = (e.touches?.[0]?.clientX ?? e.clientX) - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    const raw = min + ratio * (max - min);
+    // Snap to nearest tick
+    chosen = ticks.reduce((best, v) => Math.abs(v - raw) < Math.abs(best - raw) ? v : best, ticks[0]);
+    positionMarker(chosen);
+    checkBtn.disabled = false;
+  };
+  track.addEventListener("click", onTap);
+  track.addEventListener("touchstart", (e) => { e.preventDefault(); onTap(e); }, { passive: false });
+
+  track.appendChild(tickBar);
+  track.appendChild(marker);
+  line.appendChild(track);
+  wrap.appendChild(line);
+
+  if (chosen != null) positionMarker(chosen);
+
+  // If locked + wrong, also show the correct answer marker
+  if (locked && chosen != null && Math.abs(chosen - q.answer) >= 1e-9) {
+    const correctMarker = el("div", { class: "numline-marker numline-correct-ghost" });
+    const pct = ((q.answer - min) / (max - min)) * 100;
+    correctMarker.style.left = pct + "%";
+    track.appendChild(correctMarker);
+  }
+
+  const submitBar = el("div", { class: "feedback" });
+  const checkBtn = el("button", {
+    class: "btn btn-primary",
+    disabled: locked || chosen == null,
+    onclick: () => {
+      if (chosen == null) return;
+      const correct = Math.abs(chosen - q.answer) < 1e-9;
+      handleAnswer(q, qState, correct, String(chosen), formatTickLabel(q.answer));
+    }
+  }, "Sprawdź");
+  submitBar.appendChild(checkBtn);
+  wrap.appendChild(submitBar);
+  return wrap;
+}
+
+function formatTickLabel(v) {
+  // Show fractions for halves/quarters; otherwise plain.
+  if (Number.isInteger(v)) return String(v);
+  const r = Math.round(v * 4) / 4;
+  if (Math.abs(r - v) < 1e-6) {
+    if (r === 0.25) return "¼"; if (r === 0.5) return "½"; if (r === 0.75) return "¾";
+    if (r === 1.25) return "1¼"; if (r === 1.5) return "1½"; if (r === 1.75) return "1¾";
+  }
+  return String(Math.round(v * 100) / 100);
 }
 
 /* ============================================================
@@ -848,6 +1216,8 @@ function renderSummary(root) {
  * Boot
  * ============================================================ */
 window.addEventListener("DOMContentLoaded", () => {
+  // Apply the saved skin for the current student (or default Stage if no student yet).
+  applySkin(State.student ? getSkin(State.student) : "stage");
   // Wait for KaTeX
   const tryRender = () => {
     if (window.renderMathInElement) render();

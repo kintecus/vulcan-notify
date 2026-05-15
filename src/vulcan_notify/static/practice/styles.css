@@ -11,6 +11,7 @@
  *   --paper:   card surface
  * ============================================================ */
 :root {
+  /* Default skin = Stage. Other skins override these via .skin-* on <body>. */
   --hot: #ff2d87;
   --hot-soft: #ffb3d4;
   --hot-glow: rgba(255, 45, 135, 0.55);
@@ -25,9 +26,12 @@
   --cream: #fff7ef;
   --paper: #ffffff;
   --line: #1b0a2e;
+  /* Text-on-bright-accent tokens. Always dark per Apple HIG (works in dark mode too). */
+  --on-mint: #1b0a2e;
+  --on-streak: #1b0a2e;
 
-  --font-display: "Bagel Fat One", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
-  --font-mono-display: "Zen Dots", "SF Mono", "JetBrains Mono", monospace;
+  --font-display: "Baloo 2", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  --font-mono-display: "Orbitron", "SF Mono", "JetBrains Mono", monospace;
   --font-body: "Plus Jakarta Sans", "Hiragino Sans", system-ui, sans-serif;
   --font-jp: "Noto Sans JP", "Hiragino Sans", sans-serif;
 
@@ -369,7 +373,7 @@ html, body {
   width: 100%;
   font-family: var(--font-display);
   font-size: 30px;
-  font-weight: 400;
+  font-weight: 700;
   text-align: center;
   padding: 20px 16px;
   border: 2.5px solid var(--line);
@@ -403,6 +407,81 @@ html, body {
   text-align: center;
   margin: -4px 0 0;
   text-transform: uppercase;
+}
+
+/* ============================================================
+ * Custom on-screen keypad — iPad-first, Apple HIG compliant
+ * 4 cols × 4 rows. Calculator layout (7-8-9 top) per iOS .numberPad.
+ * Min 56pt tap targets; 8pt gaps; safe-area inset on bottom.
+ * ============================================================ */
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 14px;
+  margin-top: 4px;
+  background: var(--cream);
+  border: 2.5px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+.kp-key {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 64px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: var(--shadow-card-soft);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: transform 0.06s ease, box-shadow 0.06s ease, background 0.12s ease;
+}
+.kp-key:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-press);
+  background: var(--hot-soft);
+}
+.kp-key:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.kp-wide { grid-column: span 2; }
+.kp-op {
+  background: var(--ultra-soft);
+  font-family: var(--font-mono-display);
+  font-size: 24px;
+  color: var(--ultra);
+}
+.kp-del {
+  background: var(--sun-soft);
+  color: var(--ink);
+  font-size: 26px;
+}
+.kp-check {
+  background: var(--mint);
+  color: var(--on-mint);
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+.kp-check:active:not(:disabled) { background: var(--mint-soft); }
+
+/* Phone-portrait squeeze: keep targets usable. */
+@media (max-width: 380px) {
+  .keypad { gap: 8px; padding: 10px; }
+  .kp-key { min-height: 56px; font-size: 24px; }
+  .kp-check { font-size: 18px; }
 }
 
 /* ============================================================
@@ -515,7 +594,7 @@ html, body {
   border-radius: var(--radius);
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: transform 0.08s ease, box-shadow 0.08s ease;
@@ -876,4 +955,304 @@ html, body {
   .section-label { font-size: 12px; padding: 5px 14px; }
   .topbar { padding: 18px 22px 22px; }
   #app { padding: 0 8px; }
+}
+
+/* ============================================================
+ * True / False — two big buttons, one green-leaning, one red-leaning.
+ * Pair color + text + position so it's not color-alone (HIG).
+ * ============================================================ */
+.tf-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 8px;
+}
+.tf-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 96px;
+  border: 2.5px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  touch-action: manipulation;
+  transition: transform 0.06s ease, box-shadow 0.06s ease;
+}
+.tf-btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: var(--shadow-press); }
+.tf-true  { background: var(--mint-soft); }
+.tf-false { background: var(--hot-soft); }
+.tf-btn.correct { background: var(--mint); color: var(--on-mint); }
+.tf-btn.wrong   { background: var(--hot);  color: #fff; }
+.tf-btn.is-answer:not(.correct) {
+  outline: 3px dashed var(--mint);
+  outline-offset: -8px;
+}
+.tf-btn:disabled { opacity: 0.85; cursor: not-allowed; }
+
+/* ============================================================
+ * Matching pairs — two columns of cards, paired ones share a left
+ * border accent color. Pending-left state shows a dashed ring.
+ * ============================================================ */
+.matching-wrap { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.matching-hint {
+  font-family: var(--font-mono-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-align: center;
+  padding: 6px 12px;
+  background: var(--cream);
+  border: 1.5px dashed var(--ink-soft);
+  border-radius: var(--radius-sm);
+  transition: opacity 0.2s ease;
+}
+.matching-hint.hidden { opacity: 0; pointer-events: none; }
+.matching {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.matching-col { display: flex; flex-direction: column; gap: 10px; }
+.match-card {
+  -webkit-appearance: none;
+  appearance: none;
+  --pair-color: transparent;
+  position: relative;
+  min-height: 56px;
+  padding: 12px 14px 12px 22px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-card-soft);
+  touch-action: manipulation;
+  transition: transform 0.06s ease, box-shadow 0.06s ease;
+}
+.match-card::before {
+  content: "";
+  position: absolute;
+  left: 6px; top: 8px; bottom: 8px;
+  width: 8px;
+  border-radius: 4px;
+  background: var(--pair-color);
+  transition: background 0.15s ease;
+}
+.match-card:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: var(--shadow-press); }
+.match-card.paired { background: color-mix(in srgb, var(--pair-color) 14%, var(--paper)); }
+.match-card.pending {
+  outline: 3px dashed var(--hot);
+  outline-offset: -3px;
+}
+.match-card.correct { border-color: var(--mint); }
+.match-card.wrong   { border-color: var(--hot); background: var(--hot-soft); }
+.match-card:disabled { cursor: default; }
+
+/* ============================================================
+ * Number-line — horizontal track with ticks + tappable area.
+ * Tap snaps to nearest tick; marker animates into place.
+ * ============================================================ */
+.numline-wrap { padding: 32px 8px 16px; margin-top: 8px; }
+.numline { width: 100%; }
+.numline-track {
+  position: relative;
+  height: 64px;
+  background: linear-gradient(180deg, transparent 28px, var(--ink) 30px, var(--ink) 34px, transparent 36px);
+  cursor: pointer;
+  touch-action: none;
+}
+.numline-ticks { position: absolute; inset: 0; }
+.numline-tick {
+  position: absolute;
+  top: 22px;
+  width: 2px;
+  height: 18px;
+  background: var(--ink);
+  transform: translateX(-50%);
+}
+.numline-tick-label {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono-display);
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.numline-marker {
+  position: absolute;
+  top: 18px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--hot);
+  border: 2.5px solid var(--line);
+  transform: translateX(-50%);
+  transition: left 0.15s ease;
+  box-shadow: var(--shadow-press);
+  z-index: 2;
+}
+.numline-marker.hidden { display: none; }
+.numline-marker.correct { background: var(--mint); }
+.numline-marker.wrong   { background: var(--hot); }
+.numline-correct-ghost {
+  background: transparent;
+  border: 2.5px dashed var(--mint);
+  z-index: 1;
+}
+
+/* ============================================================
+ * Fill-in-the-blank template (shown above keypad input).
+ * Live-replaces ___ with the typed value as the kid types.
+ * ============================================================ */
+.numeric-template {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  text-align: center;
+  color: var(--ink);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  background: var(--cream);
+  border: 2px dashed var(--ink-soft);
+  border-radius: var(--radius-sm);
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.numeric-template-blank {
+  display: inline-block;
+  min-width: 1.5em;
+  color: var(--ink-soft);
+  border-bottom: 3px solid var(--ink-soft);
+  padding: 0 0.2em;
+}
+.numeric-template-fill {
+  display: inline-block;
+  padding: 0 0.3em;
+  border-radius: 8px;
+  background: var(--hot-soft);
+  color: var(--ink);
+}
+
+/* ============================================================
+ * Skin picker (welcome → set picker screen)
+ * 2×2 grid of mini cards. Selected card has thick accent ring + lift.
+ * Tap target ≥56pt per Apple HIG kids guidance.
+ * ============================================================ */
+.skin-picker {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 8px 0 24px;
+}
+.skin-card {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px;
+  min-height: 92px;
+  background: var(--paper);
+  border: 2.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card-soft);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--ink);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  touch-action: manipulation;
+}
+.skin-card:active { transform: translate(2px, 2px); box-shadow: var(--shadow-press); }
+.skin-card.is-current {
+  border-color: var(--hot);
+  box-shadow: 0 0 0 3px var(--hot-soft), var(--shadow-card-soft);
+}
+.skin-swatches {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+.skin-swatch {
+  flex: 1;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--line);
+}
+.skin-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink);
+}
+.skin-tag {
+  font-family: var(--font-mono-display);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* ============================================================
+ * Skin scopes — applied via .skin-* class on <body>.
+ * Same token names as :root (Stage). Each skin guarantees ≥4.5:1
+ * contrast on bright accent surfaces via --on-mint / --on-streak,
+ * per Apple HIG color-and-contrast guidelines.
+ * ============================================================ */
+
+/* FOREST — Ghibli · moss + amber + cream */
+body.skin-forest {
+  --hot: #d96b3b;     --hot-soft: #f3c9b1;
+  --ultra: #2f6b3d;   --ultra-soft: #c4dec7;
+  --mint: #6ba84e;    --mint-soft: #d6e7c3;
+  --sun: #e8b338;     --sun-soft: #f8e3a3;
+  --ink: #2a1f12;     --ink-soft: #6e5c45;
+  --cream: #f6efde;   --paper: #fdf8e9;
+  --line: #2a1f12;
+  --on-mint: #2a1f12;
+  --on-streak: #2a1f12;
+}
+
+/* BERRY — pastel · purple + raspberry · gentle */
+body.skin-berry {
+  --hot: #d9438f;     --hot-soft: #f7c7df;
+  --ultra: #8e5cd1;   --ultra-soft: #e0d2f4;
+  --mint: #5fb89e;    --mint-soft: #cbeae0;
+  --sun: #f5d971;     --sun-soft: #fbeec1;
+  --ink: #3a1d4d;     --ink-soft: #7d6391;
+  --cream: #fbf5fb;   --paper: #ffffff;
+  --line: #3a1d4d;
+  --on-mint: #3a1d4d;
+  --on-streak: #3a1d4d;
+}
+
+/* COSMIC — dark mode · indigo + neon. Per HIG dark mode: reduce accent
+   saturation, dark text on bright buttons (NOT light). */
+body.skin-cosmic {
+  --hot: #ff5d9c;     --hot-soft: #5b1d3c;
+  --ultra: #6ad9ff;   --ultra-soft: #1f3e57;
+  --mint: #5fd9a0;    --mint-soft: #194a39;
+  --sun: #ffd54a;     --sun-soft: #4d3f10;
+  --ink: #f3eaff;     --ink-soft: #9d8fb8;
+  --cream: #161029;   --paper: #221839;
+  --line: #f3eaff;
+  --on-mint: #0a0d1f;
+  --on-streak: #0a0d1f;
 }
