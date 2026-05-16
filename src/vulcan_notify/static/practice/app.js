@@ -826,6 +826,14 @@ function renderMatching(q, qState, locked) {
 
   const leftCol = el("div", { class: "matching-col" });
   const rightCol = el("div", { class: "matching-col" });
+  const divider = el("div", { class: "matching-divider", "aria-hidden": "true" });
+  const hasHeaders = !!(q.leftHeader || q.rightHeader);
+  const leftHeaderEl = hasHeaders
+    ? el("div", { class: "matching-header", html: renderInlineMd(q.leftHeader || "") })
+    : null;
+  const rightHeaderEl = hasHeaders
+    ? el("div", { class: "matching-header", html: renderInlineMd(q.rightHeader || "") })
+    : null;
 
   const colorFor = (leftId) => {
     const idx = [...pairings.keys()].indexOf(leftId);
@@ -896,7 +904,24 @@ function renderMatching(q, qState, locked) {
     rightCol.appendChild(btn);
   }
 
+  // Explicit grid placement so the divider can span all rows in col 2 without a placeholder cell.
+  if (hasHeaders) {
+    leftHeaderEl.style.gridArea = "1 / 1";
+    rightHeaderEl.style.gridArea = "1 / 3";
+    leftCol.style.gridArea = "2 / 1";
+    rightCol.style.gridArea = "2 / 3";
+    divider.style.gridColumn = "2";
+    divider.style.gridRow = "1 / 3";
+    grid.appendChild(leftHeaderEl);
+    grid.appendChild(rightHeaderEl);
+  } else {
+    leftCol.style.gridArea = "1 / 1";
+    rightCol.style.gridArea = "1 / 3";
+    divider.style.gridColumn = "2";
+    divider.style.gridRow = "1";
+  }
   grid.appendChild(leftCol);
+  grid.appendChild(divider);
   grid.appendChild(rightCol);
   wrap.appendChild(grid);
 

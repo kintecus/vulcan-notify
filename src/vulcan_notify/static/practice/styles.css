@@ -1015,10 +1015,28 @@ html, body {
 .matching-hint.hidden { opacity: 0; pointer-events: none; }
 .matching {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: 1fr auto 1fr;
+  column-gap: 16px;
+  row-gap: 10px;
+  align-items: stretch;
 }
 .matching-col { display: flex; flex-direction: column; gap: 10px; }
+.matching-header {
+  font-family: var(--font-mono-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-align: center;
+  padding-bottom: 4px;
+}
+.matching-divider {
+  grid-row: 1 / -1;
+  width: 2px;
+  background: var(--line);
+  border-radius: 1px;
+  align-self: stretch;
+}
 .match-card {
   -webkit-appearance: none;
   appearance: none;
