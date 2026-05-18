@@ -123,6 +123,126 @@ async def test_subject_averages(seeded_db: Path) -> None:
 
 
 @pytest.fixture
+async def db_with_improvements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """DB with two semesters and an improvement grade — exercises period filter + dedup."""
+    db_path = tmp_path / "improve.db"
+    monkeypatch.setattr(settings, "db_path", db_path)
+
+    database = Database(db_path)
+    await database.connect()
+    await database.upsert_student(
+        Student(
+            key="S1", name="Solomiia", class_name="4E", school="Sz",
+            diary_id=1, mailbox_key=None,
+        ),
+    )
+    await database.upsert_classification_period("S1", 100, 1, "2025-09-01", "2026-01-31")
+    await database.upsert_classification_period("S1", 200, 2, "2026-02-01", "2026-06-30")
+
+    # Okres 1: two grades for Math (3, 2) -> 2.5
+    # Okres 2: one improvement scenario — column 201 has original (3+) marked
+    #   superseded_by_grade_id=999, current improvement (5-) goes through.
+    grades = [
+        # Okres 1
+        Grade(column_id=101, value="3", date="15.10.2025", subject="Math",
+              column_name="kartkówka", category="Kartkówka", weight=1, teacher="T",
+              changed_since_login=False, period_id=100, superseded_by_grade_id=None),
+        Grade(column_id=102, value="2", date="20.12.2025", subject="Math",
+              column_name="sprawdzian", category="Sprawdzian", weight=1, teacher="T",
+              changed_since_login=False, period_id=100, superseded_by_grade_id=None),
+        # Okres 2: only the improvement (5-) lands in DB; original (3+) is what
+        # sync drops because the PK conflict prefers the row WITHOUT superseded.
+        # We still seed both to verify the API-side guard.
+        Grade(column_id=202, value="5-", date="15.04.2026", subject="Math",
+              column_name="sprawdzian poprawa", category="Sprawdzian", weight=1, teacher="T",
+              changed_since_login=False, period_id=200, superseded_by_grade_id=None),
+        # Simulate a stale 'original' row that somehow survived — should be
+        # excluded by the superseded guard, not double-counted with the improvement.
+        Grade(column_id=203, value="3+", date="01.04.2026", subject="Math",
+              column_name="sprawdzian (original)", category="Sprawdzian", weight=1, teacher="T",
+              changed_since_login=False, period_id=200, superseded_by_grade_id=999),
+        # Plus a clean Okres 2 row
+        Grade(column_id=204, value="4", date="20.04.2026", subject="Math",
+              column_name="kartkówka", category="Kartkówka", weight=1, teacher="T",
+              changed_since_login=False, period_id=200, superseded_by_grade_id=None),
+    ]
+    for g in grades:
+        await database.upsert_grade("S1", g)
+    await database.db.commit()
+    await database.close()
+    return db_path
+
+
+async def test_subject_averages_filters_by_current_period(
+    db_with_improvements: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default period resolution picks the period covering today; older grades are excluded."""
+    # Force "today" to fall inside Okres 2's date range.
+    fixed_now = datetime(2026, 4, 1)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return fixed_now
+
+    monkeypatch.setattr(api_mod, "datetime", _FixedDatetime)
+
+    result = api_mod._get_subject_averages()
+    subjects = result["Solomiia"]["subjects"]
+    assert len(subjects) == 1
+    # Okres 2 only: 5- (4.75) + 4 = 8.75 / 2 = 4.375 -> rounded 4.38
+    # The superseded (3+) row is excluded.
+    assert subjects[0]["average"] == 4.38
+    assert subjects[0]["count"] == 2
+
+
+async def test_subject_averages_explicit_period_request(db_with_improvements: Path) -> None:
+    """period='1' selects Okres 1 by number."""
+    result = api_mod._get_subject_averages(period_request="1")
+    # Okres 1: 3 + 2 = 5/2 = 2.5
+    assert result["Solomiia"]["subjects"][0]["average"] == 2.5
+    assert result["Solomiia"]["subjects"][0]["count"] == 2
+
+
+async def test_subject_averages_period_all(db_with_improvements: Path) -> None:
+    """period='all' disables period filter but still excludes superseded rows."""
+    result = api_mod._get_subject_averages(period_request="all")
+    # All Okres 1 + all non-superseded Okres 2: 3 + 2 + 4.75 + 4 = 13.75 / 4 = 3.4375 -> 3.44
+    assert result["Solomiia"]["subjects"][0]["average"] == 3.44
+    assert result["Solomiia"]["subjects"][0]["count"] == 4
+
+
+async def test_monthly_excludes_superseded(db_with_improvements: Path) -> None:
+    """Monthly aggregation should drop superseded grades."""
+    result = api_mod._get_monthly_averages(year=2026)
+    by_key = {m["month"]: m for m in result["Solomiia"]["months"]}
+    # April 2026 has 5- (4.75) and the superseded 3+ — only 5- should count
+    # plus the clean 4 also on 20.04.2026
+    assert by_key["2026-04"]["count"] == 2
+    assert by_key["2026-04"]["average"] == round((4.75 + 4) / 2, 2)
+
+
+async def test_grade_to_numeric_logs_unparseable(caplog: pytest.LogCaptureFixture) -> None:
+    """Malformed grade strings should produce a warning (caught silent data loss)."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="vulcan_notify.api"):
+        assert api_mod._grade_to_numeric("(3)4") is None
+        assert api_mod._grade_to_numeric("+") is None
+        # nc is expected and shouldn't warn
+        assert api_mod._grade_to_numeric("nc") is None
+        # diagnostic also shouldn't warn (handled by _is_diagnostic separately)
+        assert api_mod._grade_to_numeric("86 (%)") is None
+
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any("(3)4" in m for m in msgs)
+    assert any("+" in m for m in msgs)
+    assert not any("nc" in m for m in msgs)
+    assert not any("86 (%)" in m for m in msgs)
+
+
+@pytest.fixture
 async def seeded_exams_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Seed a DB with two students and a mix of past/future exams."""
     db_path = tmp_path / "exams.db"

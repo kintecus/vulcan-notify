@@ -41,11 +41,24 @@ CREATE TABLE IF NOT EXISTS grades (
     subject TEXT NOT NULL,
     column_name TEXT NOT NULL,
     category TEXT NOT NULL,
-    weight INTEGER DEFAULT 1,
+    weight REAL DEFAULT 1,
     teacher TEXT,
+    period_id INTEGER DEFAULT 0,
+    superseded_by_grade_id INTEGER,
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (student_key, column_id),
+    FOREIGN KEY (student_key) REFERENCES students(key)
+);
+
+CREATE TABLE IF NOT EXISTS classification_periods (
+    student_key TEXT NOT NULL,
+    period_id INTEGER NOT NULL,
+    number INTEGER NOT NULL,
+    date_from TEXT NOT NULL,
+    date_to TEXT NOT NULL,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_key, period_id),
     FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
@@ -240,6 +253,21 @@ class Database:
                 logger.info("Migrating: recreating messages table with new schema")
                 await self.db.execute("DROP TABLE messages")
 
+        # Migrate grades table (add period_id + superseded_by_grade_id)
+        cursor = await self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='grades'"
+        )
+        if await cursor.fetchone():
+            col_cursor = await self.db.execute("PRAGMA table_info(grades)")
+            columns = {row[1] for row in await col_cursor.fetchall()}
+            for col, col_type in [
+                ("period_id", "INTEGER DEFAULT 0"),
+                ("superseded_by_grade_id", "INTEGER"),
+            ]:
+                if col not in columns:
+                    logger.info("Migrating: adding %s column to grades", col)
+                    await self.db.execute(f"ALTER TABLE grades ADD COLUMN {col} {col_type}")
+
         await self.db.commit()
 
     # ── Students ─────────────────────────────────────────────────────
@@ -274,12 +302,14 @@ class Database:
     async def upsert_grade(self, student_key: str, grade: Grade) -> None:
         await self.db.execute(
             "INSERT INTO grades (student_key, column_id, value, date, subject, "
-            "column_name, category, weight, teacher) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "column_name, category, weight, teacher, period_id, superseded_by_grade_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(student_key, column_id) DO UPDATE SET "
             "value=excluded.value, date=excluded.date, subject=excluded.subject, "
             "column_name=excluded.column_name, category=excluded.category, "
             "weight=excluded.weight, teacher=excluded.teacher, "
+            "period_id=excluded.period_id, "
+            "superseded_by_grade_id=excluded.superseded_by_grade_id, "
             "last_seen=CURRENT_TIMESTAMP",
             (
                 student_key,
@@ -291,7 +321,22 @@ class Database:
                 grade.category,
                 grade.weight,
                 grade.teacher,
+                grade.period_id,
+                grade.superseded_by_grade_id,
             ),
+        )
+
+    async def upsert_classification_period(
+        self, student_key: str, period_id: int, number: int, date_from: str, date_to: str
+    ) -> None:
+        await self.db.execute(
+            "INSERT INTO classification_periods "
+            "(student_key, period_id, number, date_from, date_to) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(student_key, period_id) DO UPDATE SET "
+            "number=excluded.number, date_from=excluded.date_from, "
+            "date_to=excluded.date_to, last_seen=CURRENT_TIMESTAMP",
+            (student_key, period_id, number, date_from, date_to),
         )
 
     async def get_grades_for_student(self, student_key: str) -> list[dict[str, object]]:

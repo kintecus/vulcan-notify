@@ -31,9 +31,15 @@ class Grade:
     subject: str  # przedmiotNazwa (from parent)
     column_name: str  # nazwaKolumny
     category: str  # kategoriaKolumny
-    weight: int  # waga
+    weight: float  # waga (Vulcan returns float)
     teacher: str  # nauczyciel
     changed_since_login: bool  # zmienionaOdOstatniegoLogowania
+    period_id: int = 0  # idOkresKlasyfikacyjny (which semester this grade belongs to)
+    # idOcenaPoprawiona on the Vulcan payload is set on the ORIGINAL row of an
+    # improvement pair: "this grade has been improved, the new grade has this id".
+    # When non-null, this row is the original and should be excluded from averages
+    # (Vulcan UI shows it as the [bracket] half of e.g. "5- [4+]").
+    superseded_by_grade_id: int | None = None
 
 
 @dataclass
