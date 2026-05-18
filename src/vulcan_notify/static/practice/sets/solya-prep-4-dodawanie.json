@@ -1,0 +1,206 @@
+{
+  "id": "solya-prep-4-dodawanie",
+  "title": "Przygotowanie 4 — dodawanie, odejmowanie i mock test",
+  "subtitle": "Klasa 4 · sprawdzian 22.05.2026 · czwartek (dzień przed!)",
+  "topics": [
+    "Dodawanie o jednakowych mianownikach",
+    "Odejmowanie o jednakowych mianownikach",
+    "Zadania tekstowe",
+    "Powtórka — wszystko"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Dodawanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz: $\\dfrac{2}{7} + \\dfrac{3}{7}$",
+      "answer": "5/7",
+      "hint": "Mianowniki te same — dodajemy tylko liczniki. Mianownik zostaje na dole."
+    },
+    {
+      "id": 2,
+      "section": "Dodawanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz: $\\dfrac{1}{9} + \\dfrac{4}{9}$",
+      "answer": "5/9",
+      "hint": "Pomyśl o tym jako: 1 dziewiąta + 4 dziewiąte. Razem ile dziewiątych?"
+    },
+    {
+      "id": 3,
+      "section": "Dodawanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz i skróć: $\\dfrac{2}{8} + \\dfrac{2}{8}$",
+      "answer": "1/2",
+      "hint": "Najpierw dodaj normalnie — wyjdzie $\\dfrac{4}{8}$. Potem zerknij, czy da się skrócić."
+    },
+    {
+      "id": 4,
+      "section": "Dodawanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz i skróć: $\\dfrac{1}{6} + \\dfrac{3}{6}$",
+      "answer": "2/3",
+      "hint": "Dodaj liczniki — wyjdzie $\\dfrac{4}{6}$. Czy 4 i 6 mają wspólny dzielnik?"
+    },
+    {
+      "id": 5,
+      "section": "Dodawanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz: $\\dfrac{3}{10} + \\dfrac{4}{10}$",
+      "answer": "7/10",
+      "hint": "3 dziesiąte + 4 dziesiąte. Mianownik bez zmian."
+    },
+    {
+      "id": 6,
+      "section": "Odejmowanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz: $\\dfrac{7}{8} - \\dfrac{3}{8}$",
+      "answer": "1/2",
+      "hint": "Najpierw odejmij liczniki: 7 − 3 = 4. Wyjdzie $\\dfrac{4}{8}$ — i to się jeszcze ładnie skraca."
+    },
+    {
+      "id": 7,
+      "section": "Odejmowanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz: $\\dfrac{9}{11} - \\dfrac{2}{11}$",
+      "answer": "7/11",
+      "hint": "Mianowniki te same — odejmuj tylko liczniki."
+    },
+    {
+      "id": 8,
+      "section": "Odejmowanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz: $1 - \\dfrac{3}{7}$",
+      "answer": "4/7",
+      "hint": "Mała sztuczka: 1 to to samo co $\\dfrac{7}{7}$. Wtedy mianowniki są równe i można odejmować."
+    },
+    {
+      "id": 9,
+      "section": "Odejmowanie o jednakowych mianownikach",
+      "type": "numeric",
+      "prompt": "Oblicz: $1 - \\dfrac{5}{12}$",
+      "answer": "7/12",
+      "hint": "Zamień 1 na $\\dfrac{12}{12}$ — wtedy obie liczby mają mianownik 12."
+    },
+    {
+      "id": 10,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "Solomiia zjadła $\\dfrac{2}{8}$ pizzy, a Yarema $\\dfrac{3}{8}$ pizzy. Ile pizzy zjedli razem? (Wynik w postaci nieskracalnej.)",
+      "answer": "5/8",
+      "hint": "Razem zjedli $2 + 3 = 5$ kawałków z 8. Sprawdź jeszcze, czy da się skrócić."
+    },
+    {
+      "id": 11,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "Wstążka miała $\\dfrac{9}{10}$ metra. Mama odcięła $\\dfrac{4}{10}$ metra. Ile zostało? (Postać nieskracalna.)",
+      "answer": "1/2",
+      "hint": "Odejmij liczniki: $9 - 4 = 5$. Wyjdzie $\\dfrac{5}{10}$ — to się skraca."
+    },
+    {
+      "id": 12,
+      "section": "Zadania tekstowe",
+      "type": "numeric",
+      "prompt": "Bidon był pełny ($1$ litr). Yarema wypił $\\dfrac{2}{5}$ litra. Ile zostało w bidonie?",
+      "answer": "3/5",
+      "hint": "Pełny bidon to 1 — czyli $\\dfrac{5}{5}$. Odejmij to, co wypił."
+    },
+    {
+      "id": 13,
+      "section": "Powtórka — wszystko",
+      "type": "numberline",
+      "prompt": "Zaznacz na osi $\\dfrac{3}{4}$.",
+      "min": 0,
+      "max": 2,
+      "step": 0.25,
+      "answer": 0.75,
+      "hint": "Podziel myślowo odcinek 0–1 na cztery równe części. Szukasz trzeciej kreski."
+    },
+    {
+      "id": 14,
+      "section": "Powtórka — wszystko",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{12}{16}$ do nieskracalnej postaci.",
+      "answer": "3/4",
+      "hint": "12 i 16 są oba w tabliczce mnożenia przez 4."
+    },
+    {
+      "id": 15,
+      "section": "Powtórka — wszystko",
+      "type": "numeric",
+      "prompt": "Rozszerz: $\\dfrac{2}{3} = \\dfrac{?}{15}$",
+      "answer": "10",
+      "hint": "Mianownik 3 zmienia się w 15 — to mnożenie przez 5. Licznik leci tak samo."
+    },
+    {
+      "id": 16,
+      "section": "Powtórka — wszystko",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{5}{6}\\;\\;\\square\\;\\;\\dfrac{5}{9}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Liczniki te same (po 5). Mniejszy mianownik daje większe kawałki — czyli większy ułamek."
+    },
+    {
+      "id": 17,
+      "section": "Powtórka — wszystko",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{4}{9}\\;\\;\\square\\;\\;\\dfrac{8}{9}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": true },
+        { "id": "gt", "label": "$>$", "correct": false },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Mianowniki takie same. Większy licznik = większy ułamek."
+    },
+    {
+      "id": 18,
+      "section": "Powtórka — wszystko",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{17}{6}$ na liczbę mieszaną.",
+      "answer": "2 5/6",
+      "hint": "$6 \\cdot 2 = 12$. Do 17 brakuje jeszcze 5."
+    },
+    {
+      "id": 19,
+      "section": "Powtórka — wszystko",
+      "type": "numeric",
+      "prompt": "Zamień $3\\dfrac{2}{7}$ na ułamek niewłaściwy.",
+      "answer": "23/7",
+      "hint": "Trzy całe to $3 \\cdot 7 = 21$ siódmych. Dorzuć jeszcze 2 siódme z ułamka."
+    },
+    {
+      "id": 20,
+      "section": "Powtórka — wszystko",
+      "type": "numeric",
+      "prompt": "Oblicz: $\\dfrac{5}{12} + \\dfrac{1}{12}$ (postać nieskracalna).",
+      "answer": "1/2",
+      "hint": "Dodaj liczniki — wyjdzie $\\dfrac{6}{12}$. A 6 to dokładnie połowa z 12."
+    },
+    {
+      "id": 21,
+      "section": "Powtórka — wszystko",
+      "type": "ordering",
+      "prompt": "Uporządkuj od **najmniejszego** do **największego**.",
+      "items": [
+        { "id": "a", "label": "$\\dfrac{2}{5}$" },
+        { "id": "b", "label": "$\\dfrac{4}{5}$" },
+        { "id": "c", "label": "$\\dfrac{1}{5}$" },
+        { "id": "d", "label": "$\\dfrac{3}{5}$" }
+      ],
+      "answer": ["c", "a", "d", "b"],
+      "hint": "Wszystko ma mianownik 5. Wystarczy uszeregować liczniki od najmniejszego."
+    },
+    {
+      "id": 22,
+      "section": "Powtórka — wszystko",
+      "type": "numeric",
+      "prompt": "Yarema miał $\\dfrac{11}{12}$ tabliczki czekolady. Zjadł $\\dfrac{5}{12}$. Ile zostało? (Postać nieskracalna.)",
+      "answer": "1/2",
+      "hint": "Odejmij liczniki: $11 - 5 = 6$. Wyjdzie $\\dfrac{6}{12}$ — a to ładnie się skraca."
+    }
+  ]
+}

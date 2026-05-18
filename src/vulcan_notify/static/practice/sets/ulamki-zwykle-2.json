@@ -15,7 +15,7 @@
       "type": "numeric",
       "prompt": "Sprowadź ułamki $\\dfrac{1}{4}$ i $\\dfrac{2}{3}$ do wspólnego mianownika **12**. Wpisz pierwszy ułamek w nowej postaci.",
       "answer": "3/12",
-      "hint": "Mianownik 4 × 3 = 12, więc licznik 1 × 3."
+      "hint": "Mianownik 4 zmienia się w 12 — to mnożenie przez 3. Licznik leci tak samo."
     },
     {
       "id": 2,
@@ -23,7 +23,7 @@
       "type": "numeric",
       "prompt": "Drugi ułamek z poprzedniego zadania ($\\dfrac{2}{3}$) po sprowadzeniu do mianownika **12** to:",
       "answer": "8/12",
-      "hint": "Mianownik 3 × 4 = 12, więc licznik 2 × 4."
+      "hint": "Z 3 do 12 — to razy 4. To samo robisz z licznikiem."
     },
     {
       "id": 3,
@@ -35,7 +35,7 @@
         { "id": "b", "label": "$\\dfrac{7}{10}$", "correct": false },
         { "id": "c", "label": "są równe", "correct": false }
       ],
-      "hint": "Wspólny mianownik 20: $\\dfrac{15}{20}$ vs $\\dfrac{14}{20}$."
+      "hint": "Mianowniki różne. Sprowadź oba do wspólnego (np. 20) i wtedy zobaczysz."
     },
     {
       "id": 4,
@@ -43,7 +43,7 @@
       "type": "numeric",
       "prompt": "Ile brakuje ułamkowi $\\dfrac{3}{7}$ do **całości** (czyli do 1)? Podaj jako ułamek.",
       "answer": "4/7",
-      "hint": "$1 = \\dfrac{7}{7}$, więc $\\dfrac{7}{7} - \\dfrac{3}{7}$."
+      "hint": "Mała sztuczka: 1 to to samo co $\\dfrac{7}{7}$. Wtedy mianowniki są równe i można odejmować."
     },
     {
       "id": 5,
@@ -51,7 +51,7 @@
       "type": "numeric",
       "prompt": "Ile brakuje $\\dfrac{5}{12}$ do całości?",
       "answer": "7/12",
-      "hint": "$1 = \\dfrac{12}{12}$."
+      "hint": "Zamień 1 na $\\dfrac{12}{12}$ — wtedy obie liczby mają mianownik 12."
     },
     {
       "id": 6,
@@ -65,7 +65,7 @@
         { "id": "d", "label": "$\\dfrac{8}{9}$", "correct": false },
         { "id": "e", "label": "$\\dfrac{12}{5}$", "correct": true }
       ],
-      "hint": "Niewłaściwe to takie, gdzie licznik jest większy lub równy mianownikowi."
+      "hint": "Niewłaściwy = góra równa lub większa niż dół. Przejrzyj każdy i sprawdź."
     },
     {
       "id": 7,
@@ -73,7 +73,7 @@
       "type": "numeric",
       "prompt": "Zamień $\\dfrac{17}{5}$ na liczbę mieszaną.",
       "answer": "3 2/5",
-      "hint": "$17 \\div 5 = 3$ reszta $2$."
+      "hint": "Ile razy 5 mieści się w 17? Sprawdź: $5 \\cdot 3 = 15$. Do 17 brakuje 2."
     },
     {
       "id": 8,
@@ -81,7 +81,7 @@
       "type": "numeric",
       "prompt": "Zamień $3\\dfrac{4}{7}$ na ułamek niewłaściwy.",
       "answer": "25/7",
-      "hint": "$3 \\cdot 7 + 4 = 25$."
+      "hint": "Trzy całe to $3 \\cdot 7 = 21$ siódmych. Dorzuć jeszcze 4 siódme z ułamka."
     },
     {
       "id": 9,
@@ -89,7 +89,7 @@
       "type": "numeric",
       "prompt": "Zamień $\\dfrac{22}{8}$ na liczbę mieszaną w **najprostszej** postaci (skróć ułamek).",
       "answer": "2 3/4",
-      "hint": "$22 \\div 8 = 2$ reszta $6$, więc $2\\dfrac{6}{8} = 2\\dfrac{3}{4}$."
+      "hint": "Najpierw zamień na mieszaną: 2 całe i reszta. Potem zerknij, czy ułamek się skraca."
     },
     {
       "id": 10,
@@ -103,7 +103,7 @@
         { "id": "d", "label": "$\\dfrac{5}{8}$" }
       ],
       "answer": ["c", "a", "d", "b"],
-      "hint": "Wspólny mianownik 8: $\\dfrac{2}{8}, \\dfrac{4}{8}, \\dfrac{5}{8}, \\dfrac{6}{8}$."
+      "hint": "Sprowadź wszystkie do wspólnego mianownika 8 — wtedy widać, jak je ułożyć."
     },
     {
       "id": 11,
@@ -111,7 +111,7 @@
       "type": "numeric",
       "prompt": "Tort podzielono na 8 części. Solomiia zjadła $\\dfrac{1}{4}$ tortu, a Yarema $\\dfrac{3}{8}$. Ile **kawałków** zjadły razem?",
       "answer": "5",
-      "hint": "$\\dfrac{1}{4} = \\dfrac{2}{8}$, więc razem $\\dfrac{2}{8} + \\dfrac{3}{8} = \\dfrac{5}{8}$ z 8 = 5."
+      "hint": "Najpierw sprowadź $\\dfrac{1}{4}$ do mianownika 8. Potem dodaj kawałki i powiedz, ile to z 8."
     },
     {
       "id": 12,
@@ -119,7 +119,7 @@
       "type": "numeric",
       "prompt": "Wstążka ma długość $\\dfrac{7}{10}$ metra. Mama odcięła $\\dfrac{3}{10}$ metra. Ile zostało? Podaj w postaci nieskracalnej.",
       "answer": "2/5",
-      "hint": "$\\dfrac{7}{10} - \\dfrac{3}{10} = \\dfrac{4}{10}$, skróć przez 2."
+      "hint": "Mianowniki te same — odejmij liczniki. Wynik to $\\dfrac{4}{10}$, a to się skraca."
     },
     {
       "id": 13,
@@ -127,7 +127,7 @@
       "type": "numeric",
       "prompt": "W klasie jest 24 uczniów. $\\dfrac{1}{3}$ z nich gra w piłkę. Ile osób gra w piłkę?",
       "answer": "8",
-      "hint": "$\\dfrac{1}{3}$ z 24 = $24 \\div 3$."
+      "hint": "„Jedna trzecia z czegoś” = podziel to przez 3."
     },
     {
       "id": 14,
@@ -135,7 +135,7 @@
       "type": "numeric",
       "prompt": "Z 30-osobowej klasy $\\dfrac{2}{5}$ jeździ na rowerze do szkoły. Ile osób to jest?",
       "answer": "12",
-      "hint": "$\\dfrac{2}{5}$ z 30: najpierw $30 \\div 5 = 6$, potem $\\cdot 2$."
+      "hint": "Najpierw policz piątą część z 30 (czyli $30 \\div 5$). Potem weź tego 2 razy."
     },
     {
       "id": 15,
@@ -143,7 +143,7 @@
       "type": "numeric",
       "prompt": "Skróć ułamek $\\dfrac{24}{36}$ do nieskracalnej postaci.",
       "answer": "2/3",
-      "hint": "Największy wspólny dzielnik 24 i 36 to 12."
+      "hint": "Możesz skracać po kawałku (najpierw przez 2, potem przez 2, potem przez 3) albo od razu przez 12."
     }
   ]
 }
