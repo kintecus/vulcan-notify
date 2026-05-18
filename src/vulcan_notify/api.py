@@ -33,26 +33,85 @@ def _is_diagnostic(value: str) -> bool:
     return "%" in value
 
 
+# Plus/minus modifier values. Vulcan UONET+ defaults are +0.25 / -0.25 but each
+# school can override in Administration → "Wartości znaków +,–,=". The current
+# values match what Vulcan's monthly average chart shows for Solomiia's grades
+# (verified against Feb/Mar/Apr/May 2026 readings within ±0.10).
+_PLUS_DELTA = 0.5
+_MINUS_DELTA = 0.25
+
+
 def _grade_to_numeric(value: str) -> float | None:
     """Convert Polish grade string to numeric value. Returns None for non-gradeable marks."""
     v = value.strip().lower()
     if _is_diagnostic(v):
         return None
     if not v or v[0] not in "123456":
+        if v and v != "nc":
+            logger.warning("Unparseable grade value: %r", value)
         return None
     base = int(v[0])
     if len(v) == 1 or v[1] == "p":
         return float(base)
     if v[1] == "+":
-        return base + 0.5
+        return base + _PLUS_DELTA
     if v[1] == "-":
-        return base - 0.25
+        return base - _MINUS_DELTA
     return float(base)
+
+
+def _resolve_period_id(
+    db: sqlite3.Connection, student_key: str, period_request: str | None
+) -> int | None:
+    """Resolve a period_id for a student.
+
+    `period_request` may be:
+    - None or "current" → the period whose date range contains today, or the
+      most recent period if today is between periods.
+    - "all" → None (caller should treat as no filter)
+    - an integer string → that exact period_id
+    - "1" / "2" / "okres1" / "okres2" → match on ClassificationPeriod.number
+
+    Returns None when no filter should apply or no period matches.
+    """
+    if period_request == "all":
+        return None
+
+    row = db.execute(
+        "SELECT period_id, number, date_from, date_to FROM classification_periods "
+        "WHERE student_key = ? ORDER BY date_from",
+        (student_key,),
+    ).fetchall()
+    if not row:
+        return None
+
+    if period_request and period_request.isdigit() and len(period_request) > 1:
+        # Looks like an explicit period_id
+        for p in row:
+            if p["period_id"] == int(period_request):
+                return p["period_id"]
+        return None
+
+    # Match on okres number (1, 2, ...)
+    if period_request in ("1", "2", "okres1", "okres2", "okres 1", "okres 2"):
+        wanted = int(period_request[-1])
+        for p in row:
+            if p["number"] == wanted:
+                return p["period_id"]
+        return None
+
+    # Default: current period (date range contains today, else latest)
+    today = datetime.now().strftime("%Y-%m-%d")
+    for p in row:
+        if p["date_from"] <= today <= p["date_to"]:
+            return p["period_id"]
+    return row[-1]["period_id"]
 
 
 def _get_grade_averages(
     student_filter: str | None = None,
     window_days: int = 30,
+    period_request: str | None = None,
 ) -> dict[str, Any]:
     """Compute weighted grade averages per student with rolling window time series."""
     db = _connect()
@@ -65,11 +124,17 @@ def _get_grade_averages(
         params = (student_filter,)
 
     for s in db.execute(query, params):
-        grades = db.execute(
-            "SELECT value, date, weight FROM grades WHERE student_key = ? "
-            "ORDER BY substr(date,7,4)||substr(date,4,2)||substr(date,1,2) ASC",
-            (s["key"],),
-        ).fetchall()
+        period_id = _resolve_period_id(db, s["key"], period_request)
+        sql = (
+            "SELECT value, date, weight FROM grades "
+            "WHERE student_key = ? AND superseded_by_grade_id IS NULL"
+        )
+        sql_params: list[object] = [s["key"]]
+        if period_id is not None:
+            sql += " AND period_id = ?"
+            sql_params.append(period_id)
+        sql += " ORDER BY substr(date,7,4)||substr(date,4,2)||substr(date,1,2) ASC"
+        grades = db.execute(sql, sql_params).fetchall()
 
         # Parse all grades into a list with ISO dates
         parsed: list[tuple[str, float, int]] = []
@@ -150,8 +215,11 @@ def _get_monthly_averages(
     month_keys = _month_list(year, months)
 
     for s in db.execute(query, params):
+        # Monthly chart shows all months regardless of semester; just skip
+        # superseded (improvement-original) rows.
         grades = db.execute(
-            "SELECT value, date, weight FROM grades WHERE student_key = ?",
+            "SELECT value, date, weight FROM grades "
+            "WHERE student_key = ? AND superseded_by_grade_id IS NULL",
             (s["key"],),
         ).fetchall()
 
@@ -188,7 +256,10 @@ def _get_monthly_averages(
     return result
 
 
-def _get_subject_averages(student_filter: str | None = None) -> dict[str, Any]:
+def _get_subject_averages(
+    student_filter: str | None = None,
+    period_request: str | None = None,
+) -> dict[str, Any]:
     """Compute weighted grade averages grouped by subject, sorted descending."""
     db = _connect()
     result: dict[str, Any] = {}
@@ -200,10 +271,16 @@ def _get_subject_averages(student_filter: str | None = None) -> dict[str, Any]:
         params = (student_filter,)
 
     for s in db.execute(query, params):
-        grades = db.execute(
-            "SELECT value, subject, weight FROM grades WHERE student_key = ?",
-            (s["key"],),
-        ).fetchall()
+        period_id = _resolve_period_id(db, s["key"], period_request)
+        sql = (
+            "SELECT value, subject, weight FROM grades "
+            "WHERE student_key = ? AND superseded_by_grade_id IS NULL"
+        )
+        sql_params: list[object] = [s["key"]]
+        if period_id is not None:
+            sql += " AND period_id = ?"
+            sql_params.append(period_id)
+        grades = db.execute(sql, sql_params).fetchall()
 
         buckets: dict[str, tuple[float, int, int]] = {}
         for g in grades:
@@ -420,7 +497,8 @@ def _get_messages(n: int = 20) -> list[dict[str, Any]]:
 async def handle_grades_average(request: web.Request) -> web.Response:
     student = request.query.get("student")
     window = int(request.query.get("window", "30"))
-    return web.json_response(_get_grade_averages(student, window))
+    period = request.query.get("period")
+    return web.json_response(_get_grade_averages(student, window, period))
 
 
 async def handle_grades_monthly(request: web.Request) -> web.Response:
@@ -514,7 +592,8 @@ async def handle_schedule(request: web.Request) -> web.Response:
 
 async def handle_grades_by_subject(request: web.Request) -> web.Response:
     student = request.query.get("student")
-    return web.json_response(_get_subject_averages(student))
+    period = request.query.get("period")
+    return web.json_response(_get_subject_averages(student, period))
 
 
 async def handle_grades(request: web.Request) -> web.Response:

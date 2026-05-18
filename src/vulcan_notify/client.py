@@ -202,9 +202,11 @@ class VulcanClient:
                             category=grade.get(
                                 "kategoriaKolumny", column.get("kategoriaKolumny", "")
                             ),
-                            weight=grade.get("waga", 1),
+                            weight=float(grade.get("waga", 1) or 1),
                             teacher=grade.get("nauczyciel", ""),
                             changed_since_login=grade.get("zmienionaOdOstatniegoLogowania", False),
+                            period_id=period.id,
+                            superseded_by_grade_id=grade.get("idOcenaPoprawiona"),
                         )
                     )
         return grades
