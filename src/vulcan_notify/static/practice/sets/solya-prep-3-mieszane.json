@@ -1,0 +1,185 @@
+{
+  "id": "solya-prep-3-mieszane",
+  "title": "Przygotowanie 3 — liczby mieszane i ułamki niewłaściwe",
+  "subtitle": "Klasa 4 · sprawdzian 22.05.2026 · środa",
+  "topics": [
+    "Niewłaściwy → mieszany",
+    "Mieszany → niewłaściwy",
+    "Rozpoznawanie",
+    "Powtórka — porównywanie"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Niewłaściwy → mieszany",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{9}{4}$ na liczbę mieszaną.",
+      "answer": "2 1/4",
+      "hint": "Ile razy 4 zmieści się w 9? To liczba całych. A to, co zostanie, staje się nowym licznikiem."
+    },
+    {
+      "id": 2,
+      "section": "Niewłaściwy → mieszany",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{13}{5}$ na liczbę mieszaną.",
+      "answer": "2 3/5",
+      "hint": "5 mieści się w 13 dwa razy (bo $5 \\cdot 2 = 10$), a do 13 brakuje jeszcze 3."
+    },
+    {
+      "id": 3,
+      "section": "Niewłaściwy → mieszany",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{19}{6}$ na liczbę mieszaną.",
+      "answer": "3 1/6",
+      "hint": "$6 \\cdot 3 = 18$ — najbliżej do 19, ale jeszcze nie dochodzi. Zostaje 1."
+    },
+    {
+      "id": 4,
+      "section": "Niewłaściwy → mieszany",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{23}{7}$ na liczbę mieszaną.",
+      "answer": "3 2/7",
+      "hint": "Tabliczka mnożenia przez 7: $7 \\cdot 3 = 21$. Do 23 brakuje 2."
+    },
+    {
+      "id": 5,
+      "section": "Niewłaściwy → mieszany",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{15}{4}$ na liczbę mieszaną.",
+      "answer": "3 3/4",
+      "hint": "$4 \\cdot 3 = 12$. Do 15 brakuje jeszcze 3 — to nowy licznik."
+    },
+    {
+      "id": 6,
+      "section": "Niewłaściwy → mieszany",
+      "type": "numeric",
+      "prompt": "Zamień $\\dfrac{8}{3}$ na liczbę mieszaną.",
+      "answer": "2 2/3",
+      "hint": "Ile całych trójek mieści się w 8? Dwie ($3 + 3 = 6$). Zostaje 2."
+    },
+    {
+      "id": 7,
+      "section": "Mieszany → niewłaściwy",
+      "type": "numeric",
+      "prompt": "Zamień $2\\dfrac{1}{4}$ na ułamek niewłaściwy.",
+      "answer": "9/4",
+      "hint": "Całość razy mianownik, plus licznik — to nowy licznik. Mianownik zostaje taki sam."
+    },
+    {
+      "id": 8,
+      "section": "Mieszany → niewłaściwy",
+      "type": "numeric",
+      "prompt": "Zamień $3\\dfrac{2}{5}$ na ułamek niewłaściwy.",
+      "answer": "17/5",
+      "hint": "Trzy całe to $3 \\cdot 5 = 15$ piątych. Dorzuć jeszcze 2 piąte z ułamka."
+    },
+    {
+      "id": 9,
+      "section": "Mieszany → niewłaściwy",
+      "type": "numeric",
+      "prompt": "Zamień $4\\dfrac{1}{3}$ na ułamek niewłaściwy.",
+      "answer": "13/3",
+      "hint": "Cztery całe to $4 \\cdot 3 = 12$ trzecich. Plus 1 trzecia z ułamka."
+    },
+    {
+      "id": 10,
+      "section": "Mieszany → niewłaściwy",
+      "type": "numeric",
+      "prompt": "Zamień $1\\dfrac{5}{6}$ na ułamek niewłaściwy.",
+      "answer": "11/6",
+      "hint": "Jedna cała to 6 szóstych. Plus jeszcze 5 szóstych z ułamka."
+    },
+    {
+      "id": 11,
+      "section": "Mieszany → niewłaściwy",
+      "type": "numeric",
+      "prompt": "Zamień $5\\dfrac{2}{3}$ na ułamek niewłaściwy.",
+      "answer": "17/3",
+      "hint": "Pięć całych = $5 \\cdot 3$ trzecich, plus 2 trzecie."
+    },
+    {
+      "id": 12,
+      "section": "Mieszany → niewłaściwy",
+      "type": "numeric",
+      "prompt": "Zamień $2\\dfrac{7}{8}$ na ułamek niewłaściwy.",
+      "answer": "23/8",
+      "hint": "Dwie całe to $2 \\cdot 8 = 16$ ósmych. Plus 7 ósmych z ułamka."
+    },
+    {
+      "id": 13,
+      "section": "Rozpoznawanie",
+      "type": "matching",
+      "prompt": "Połącz liczbę mieszaną z odpowiadającym ułamkiem niewłaściwym.",
+      "leftHeader": "Liczba mieszana",
+      "rightHeader": "Ułamek niewłaściwy",
+      "left": [
+        { "id": "a", "label": "$3\\dfrac{1}{2}$" },
+        { "id": "b", "label": "$2\\dfrac{2}{5}$" },
+        { "id": "c", "label": "$1\\dfrac{4}{7}$" },
+        { "id": "d", "label": "$4\\dfrac{1}{6}$" }
+      ],
+      "right": [
+        { "id": "1", "label": "$\\dfrac{25}{6}$" },
+        { "id": "2", "label": "$\\dfrac{12}{5}$" },
+        { "id": "3", "label": "$\\dfrac{7}{2}$" },
+        { "id": "4", "label": "$\\dfrac{11}{7}$" }
+      ],
+      "pairs": [["a", "3"], ["b", "2"], ["c", "4"], ["d", "1"]],
+      "hint": "Dla każdej liczby mieszanej zamień ją w ułamek niewłaściwy, a potem znajdź parę."
+    },
+    {
+      "id": 14,
+      "section": "Rozpoznawanie",
+      "type": "multi-mcq",
+      "prompt": "Które z poniższych są ułamkami **niewłaściwymi** (licznik ≥ mianownik)?",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{4}{9}$", "correct": false },
+        { "id": "b", "label": "$\\dfrac{11}{5}$", "correct": true },
+        { "id": "c", "label": "$\\dfrac{8}{8}$", "correct": true },
+        { "id": "d", "label": "$\\dfrac{6}{13}$", "correct": false },
+        { "id": "e", "label": "$\\dfrac{20}{3}$", "correct": true }
+      ],
+      "hint": "Niewłaściwy = góra równa lub większa niż dół. Przejrzyj każdy i sprawdź, czy licznik dorównuje mianownikowi."
+    },
+    {
+      "id": 15,
+      "section": "Rozpoznawanie",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{18}{5} = 3\\dfrac{3}{5}$?",
+      "answer": true,
+      "hint": "Ile całych piątek mieści się w 18? Sprawdź, czy zgadza się z prawej strony."
+    },
+    {
+      "id": 16,
+      "section": "Rozpoznawanie",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{14}{4} = 3\\dfrac{2}{4}$?",
+      "answer": true,
+      "hint": "Sprawdź zamianę: $14 \\div 4$ daje 3 całe i resztę 2. Tak, $3\\dfrac{2}{4}$ to ta sama liczba (można jeszcze skrócić)."
+    },
+    {
+      "id": 17,
+      "section": "Powtórka — porównywanie",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{7}{8}\\;\\;\\square\\;\\;\\dfrac{3}{8}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Mianowniki te same. Większy licznik wygrywa."
+    },
+    {
+      "id": 18,
+      "section": "Powtórka — porównywanie",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{4}{5}\\;\\;\\square\\;\\;\\dfrac{4}{11}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Liczniki obu to 4. Pomyśl: 4 kawałki z 5 vs 4 kawałki z 11 — gdzie zajmują więcej?"
+    }
+  ]
+}

@@ -32,6 +32,10 @@ function applySkin(id) {
 }
 
 const SETS = [
+  { id: "solya-prep-1-os-skracanie", url: "./sets/solya-prep-1-os-skracanie.json", trackLabel: "PREP MON · 05-18" },
+  { id: "solya-prep-2-porownywanie", url: "./sets/solya-prep-2-porownywanie.json", trackLabel: "PREP TUE · 05-19" },
+  { id: "solya-prep-3-mieszane",     url: "./sets/solya-prep-3-mieszane.json",     trackLabel: "PREP WED · 05-20" },
+  { id: "solya-prep-4-dodawanie",    url: "./sets/solya-prep-4-dodawanie.json",    trackLabel: "PREP THU · 05-21" },
   { id: "ulamki-zwykle-1",     url: "./sets/ulamki-zwykle-1.json",     trackLabel: "TRACK 01 · LV.1" },
   { id: "ulamki-zwykle-2",     url: "./sets/ulamki-zwykle-2.json",     trackLabel: "TRACK 02 · LV.2" },
   { id: "ulamki-dziesietne-1", url: "./sets/ulamki-dziesietne-1.json", trackLabel: "TRACK 03 · LV.1" },

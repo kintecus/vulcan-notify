@@ -1,0 +1,253 @@
+{
+  "id": "solya-prep-2-porownywanie",
+  "title": "Przygotowanie 2 — porównywanie ułamków",
+  "subtitle": "Klasa 4 · sprawdzian 22.05.2026 · wtorek",
+  "topics": [
+    "Te same mianowniki",
+    "Te same liczniki",
+    "Porównywanie liczb mieszanych",
+    "Sortowanie"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Te same mianowniki",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{4}{9}\\;\\;\\square\\;\\;\\dfrac{7}{9}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": true },
+        { "id": "gt", "label": "$>$", "correct": false },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Mianowniki te same, więc porównaj tylko liczniki. Większy licznik = większy ułamek."
+    },
+    {
+      "id": 2,
+      "section": "Te same mianowniki",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{8}{11}\\;\\;\\square\\;\\;\\dfrac{5}{11}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Mianowniki takie same. Co większe — 8 czy 5?"
+    },
+    {
+      "id": 3,
+      "section": "Te same mianowniki",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{6}{13}\\;\\;\\square\\;\\;\\dfrac{6}{13}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": false },
+        { "id": "eq", "label": "$=$", "correct": true }
+      ],
+      "hint": "Popatrz uważnie — to dokładnie te same liczby po obu stronach."
+    },
+    {
+      "id": 4,
+      "section": "Te same mianowniki",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{9}{10} > \\dfrac{3}{10}$?",
+      "answer": true,
+      "hint": "Oba ułamki to dziesiąte. 9 dziesiątych vs 3 dziesiąte — co większe?"
+    },
+    {
+      "id": 5,
+      "section": "Te same mianowniki",
+      "type": "multi-mcq",
+      "prompt": "Które ułamki są **mniejsze** od $\\dfrac{5}{8}$? (Zaznacz wszystkie.)",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{3}{8}$", "correct": true },
+        { "id": "b", "label": "$\\dfrac{7}{8}$", "correct": false },
+        { "id": "c", "label": "$\\dfrac{1}{8}$", "correct": true },
+        { "id": "d", "label": "$\\dfrac{4}{8}$", "correct": true },
+        { "id": "e", "label": "$\\dfrac{6}{8}$", "correct": false }
+      ],
+      "hint": "Wszystko ma mianownik 8. Szukaj liczników mniejszych niż 5."
+    },
+    {
+      "id": 6,
+      "section": "Te same liczniki",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{2}{5}\\;\\;\\square\\;\\;\\dfrac{2}{7}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Liczniki te same! Pomyśl: tort podzielony na 5 części daje większe kawałki niż na 7. Więc mniejszy mianownik = większy ułamek."
+    },
+    {
+      "id": 7,
+      "section": "Te same liczniki",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;\\dfrac{3}{8}\\;\\;\\square\\;\\;\\dfrac{3}{4}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": true },
+        { "id": "gt", "label": "$>$", "correct": false },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Liczniki takie same (3 i 3). Kto ma większy mianownik, ma mniejsze kawałki — czyli mniejszy ułamek."
+    },
+    {
+      "id": 8,
+      "section": "Te same liczniki",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{4}{5} > \\dfrac{4}{9}$?",
+      "answer": true,
+      "hint": "Liczniki te same. Pizza na 5 kawałków vs pizza na 9 — gdzie kawałki są większe?"
+    },
+    {
+      "id": 9,
+      "section": "Te same liczniki",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{5}{12} > \\dfrac{5}{8}$?",
+      "answer": false,
+      "hint": "Uwaga na pułapkę: większy mianownik nie znaczy większy ułamek. Wręcz przeciwnie — gdy liczniki są te same."
+    },
+    {
+      "id": 10,
+      "section": "Te same liczniki",
+      "type": "multi-mcq",
+      "prompt": "Które ułamki są **większe** od $\\dfrac{3}{10}$? (Zaznacz wszystkie. Wszystkie mają licznik 3.)",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{3}{5}$", "correct": true },
+        { "id": "b", "label": "$\\dfrac{3}{20}$", "correct": false },
+        { "id": "c", "label": "$\\dfrac{3}{7}$", "correct": true },
+        { "id": "d", "label": "$\\dfrac{3}{4}$", "correct": true },
+        { "id": "e", "label": "$\\dfrac{3}{12}$", "correct": false }
+      ],
+      "hint": "Wszystkie liczniki to 3. Szukasz mianowników mniejszych niż 10 — to one dają większy ułamek."
+    },
+    {
+      "id": 11,
+      "section": "Porównywanie liczb mieszanych",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;2\\dfrac{1}{4}\\;\\;\\square\\;\\;1\\dfrac{3}{4}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": false },
+        { "id": "gt", "label": "$>$", "correct": true },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Najpierw spójrz na liczby całe. Jeśli różne — to one decydują."
+    },
+    {
+      "id": 12,
+      "section": "Porównywanie liczb mieszanych",
+      "type": "mcq",
+      "prompt": "Wstaw znak: $\\;3\\dfrac{2}{5}\\;\\;\\square\\;\\;3\\dfrac{4}{5}$",
+      "choices": [
+        { "id": "lt", "label": "$<$", "correct": true },
+        { "id": "gt", "label": "$>$", "correct": false },
+        { "id": "eq", "label": "$=$", "correct": false }
+      ],
+      "hint": "Całości takie same. Wtedy decyduje ułamek — a tu mianowniki są równe."
+    },
+    {
+      "id": 13,
+      "section": "Porównywanie liczb mieszanych",
+      "type": "truefalse",
+      "prompt": "Czy $5\\dfrac{1}{8} > 4\\dfrac{7}{8}$?",
+      "answer": true,
+      "hint": "5 całych zawsze pobije 4 całe — niezależnie od ułamka."
+    },
+    {
+      "id": 14,
+      "section": "Porównywanie liczb mieszanych",
+      "type": "truefalse",
+      "prompt": "Czy $2\\dfrac{3}{7} > 2\\dfrac{5}{7}$?",
+      "answer": false,
+      "hint": "Całości takie same — popatrz na ułamki. 3 siódme czy 5 siódmych?"
+    },
+    {
+      "id": 15,
+      "section": "Porównywanie liczb mieszanych",
+      "type": "matching",
+      "prompt": "Połącz dwie liczby mieszane z odpowiednim znakiem porównania.",
+      "leftHeader": "Para",
+      "rightHeader": "Znak",
+      "left": [
+        { "id": "a", "label": "$1\\dfrac{2}{3}$ vs $1\\dfrac{1}{3}$" },
+        { "id": "b", "label": "$2\\dfrac{1}{5}$ vs $3\\dfrac{4}{5}$" },
+        { "id": "c", "label": "$4\\dfrac{3}{8}$ vs $4\\dfrac{3}{8}$" },
+        { "id": "d", "label": "$5\\dfrac{1}{2}$ vs $5\\dfrac{1}{3}$" }
+      ],
+      "right": [
+        { "id": "1", "label": "$<$" },
+        { "id": "2", "label": "$>$" },
+        { "id": "3", "label": "$=$" },
+        { "id": "4", "label": "$>$ (te same liczniki!)" }
+      ],
+      "pairs": [["a", "2"], ["b", "1"], ["c", "3"], ["d", "4"]],
+      "hint": "Sprawdzaj parę po parze: najpierw liczby całe, potem ułamki. Uważaj na parę, gdzie liczniki są te same!"
+    },
+    {
+      "id": 16,
+      "section": "Sortowanie",
+      "type": "ordering",
+      "prompt": "Uporządkuj od **najmniejszego** do **największego** (te same mianowniki).",
+      "items": [
+        { "id": "a", "label": "$\\dfrac{5}{12}$" },
+        { "id": "b", "label": "$\\dfrac{11}{12}$" },
+        { "id": "c", "label": "$\\dfrac{1}{12}$" },
+        { "id": "d", "label": "$\\dfrac{7}{12}$" }
+      ],
+      "answer": ["c", "a", "d", "b"],
+      "hint": "Mianowniki takie same — wystarczy uszeregować liczniki od najmniejszego."
+    },
+    {
+      "id": 17,
+      "section": "Sortowanie",
+      "type": "ordering",
+      "prompt": "Uporządkuj od **najmniejszego** do **największego** (te same liczniki!).",
+      "items": [
+        { "id": "a", "label": "$\\dfrac{2}{5}$" },
+        { "id": "b", "label": "$\\dfrac{2}{9}$" },
+        { "id": "c", "label": "$\\dfrac{2}{3}$" },
+        { "id": "d", "label": "$\\dfrac{2}{7}$" }
+      ],
+      "answer": ["b", "d", "a", "c"],
+      "hint": "Pułapka odwrotna: tu mianowniki się zmieniają, ale liczniki nie. Im większy mianownik, tym mniejszy ułamek."
+    },
+    {
+      "id": 18,
+      "section": "Sortowanie",
+      "type": "ordering",
+      "prompt": "Uporządkuj liczby mieszane od **najmniejszej** do **największej**.",
+      "items": [
+        { "id": "a", "label": "$2\\dfrac{1}{4}$" },
+        { "id": "b", "label": "$1\\dfrac{3}{4}$" },
+        { "id": "c", "label": "$3\\dfrac{1}{4}$" },
+        { "id": "d", "label": "$2\\dfrac{3}{4}$" }
+      ],
+      "answer": ["b", "a", "d", "c"],
+      "hint": "Najpierw układaj po całych. Gdy się powtarzają — decyduje ułamek."
+    },
+    {
+      "id": 19,
+      "section": "Zadanie tekstowe",
+      "type": "mcq",
+      "prompt": "Solomiia zjadła $\\dfrac{3}{8}$ czekolady, a Yarema $\\dfrac{5}{8}$. Kto zjadł więcej?",
+      "choices": [
+        { "id": "a", "label": "Solomiia", "correct": false },
+        { "id": "b", "label": "Yarema", "correct": true },
+        { "id": "c", "label": "Zjedli tyle samo", "correct": false }
+      ],
+      "hint": "Oboje mają mianownik 8 — czyli ta sama wielkość kawałków. Kto zjadł więcej kawałków?"
+    },
+    {
+      "id": 20,
+      "section": "Zadanie tekstowe",
+      "type": "mcq",
+      "prompt": "Wstążka A ma $\\dfrac{2}{3}$ metra, wstążka B ma $\\dfrac{2}{5}$ metra. Która jest dłuższa?",
+      "choices": [
+        { "id": "a", "label": "A", "correct": true },
+        { "id": "b", "label": "B", "correct": false },
+        { "id": "c", "label": "Są równe", "correct": false }
+      ],
+      "hint": "Liczniki obu wstążek to 2 — różnią się tylko mianownikami. Pomyśl: metr na 3 części vs metr na 5 części. Gdzie kawałek jest dłuższy?"
+    }
+  ]
+}

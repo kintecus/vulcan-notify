@@ -15,7 +15,7 @@
       "type": "truefalse",
       "prompt": "Czy $\\dfrac{1}{2} = 0{,}5$?",
       "answer": true,
-      "hint": "Zamień ułamek na ułamek dziesiętny."
+      "hint": "Spróbuj zapisać $\\dfrac{1}{2}$ jako liczbę dziesiętną — wtedy łatwo porównać."
     },
     {
       "id": 2,
@@ -23,7 +23,7 @@
       "type": "truefalse",
       "prompt": "Czy $\\dfrac{3}{4}$ jest większe od $\\dfrac{4}{5}$?",
       "answer": false,
-      "hint": "Sprowadź do wspólnego mianownika: 3/4 = 15/20, 4/5 = 16/20."
+      "hint": "Mianowniki różne. Sprowadź oba do wspólnego mianownika (np. 20) i wtedy zobaczysz, który jest większy."
     },
     {
       "id": 3,
@@ -32,7 +32,7 @@
       "template": "$2 + ___ = 5$",
       "prompt": "Wpisz brakującą liczbę.",
       "answer": "3",
-      "hint": "5 - 2 = ?"
+      "hint": "Co dodać do 2, żeby wyszło 5?"
     },
     {
       "id": 4,
@@ -41,7 +41,7 @@
       "template": "$\\dfrac{1}{2}$ + ___ = $1$",
       "prompt": "Jakiego ułamka brakuje?",
       "answer": "1/2",
-      "hint": "Połowa plus połowa to całość."
+      "hint": "Połowa + połowa = całość. Czego brakuje?"
     },
     {
       "id": 5,
@@ -61,7 +61,7 @@
         { "id": "4", "label": "0,75" }
       ],
       "pairs": [["a", "2"], ["b", "1"], ["c", "4"], ["d", "3"]],
-      "hint": "Podziel licznik przez mianownik."
+      "hint": "Pomyśl o każdym ułamku jako o części całości: połowa, ćwiartka, trzy ćwiartki, jedna piąta."
     },
     {
       "id": 6,
@@ -72,7 +72,7 @@
       "max": 2,
       "step": 0.25,
       "answer": 0.5,
-      "hint": "Połowa to środek między 0 a 1."
+      "hint": "Połowa odcinka od 0 do 1 — czyli dokładnie środek."
     },
     {
       "id": 7,
@@ -83,7 +83,7 @@
       "max": 10,
       "step": 1,
       "answer": 7,
-      "hint": "Policz kreski od 0."
+      "hint": "Licz kreski od 0 — siódma kreska to 7."
     }
   ]
 }

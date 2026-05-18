@@ -1,0 +1,209 @@
+{
+  "id": "solya-prep-1-os-skracanie",
+  "title": "Przygotowanie 1 — oś liczbowa, skracanie i rozszerzanie",
+  "subtitle": "Klasa 4 · sprawdzian 22.05.2026 · poniedziałek",
+  "topics": [
+    "Ułamki na osi liczbowej",
+    "Skracanie ułamków",
+    "Rozszerzanie ułamków"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "section": "Ułamki na osi liczbowej",
+      "type": "numberline",
+      "prompt": "Zaznacz na osi $\\dfrac{3}{4}$.",
+      "min": 0,
+      "max": 2,
+      "step": 0.25,
+      "answer": 0.75,
+      "hint": "Wyobraź sobie odcinek od 0 do 1 podzielony na 4 równe kawałki. Szukasz trzeciego."
+    },
+    {
+      "id": 2,
+      "section": "Ułamki na osi liczbowej",
+      "type": "numberline",
+      "prompt": "Zaznacz na osi $1\\dfrac{1}{2}$.",
+      "min": 0,
+      "max": 2,
+      "step": 0.25,
+      "answer": 1.5,
+      "hint": "Najpierw cała 1, potem dokładnie w połowie między 1 a 2."
+    },
+    {
+      "id": 3,
+      "section": "Ułamki na osi liczbowej",
+      "type": "numberline",
+      "prompt": "Zaznacz na osi $\\dfrac{5}{4}$ (czyli $1\\dfrac{1}{4}$).",
+      "min": 0,
+      "max": 2,
+      "step": 0.25,
+      "answer": 1.25,
+      "hint": "Jedna cała + jeszcze jedna ćwiartka. Czyli kawałek za 1."
+    },
+    {
+      "id": 4,
+      "section": "Ułamki na osi liczbowej",
+      "type": "mcq",
+      "prompt": "Punkt na osi wskazuje na $\\dfrac{7}{4}$. Która liczba mieszana to ten sam punkt?",
+      "choices": [
+        { "id": "a", "label": "$1\\dfrac{3}{4}$", "correct": true },
+        { "id": "b", "label": "$2\\dfrac{1}{4}$", "correct": false },
+        { "id": "c", "label": "$1\\dfrac{1}{4}$", "correct": false }
+      ],
+      "hint": "Sprawdź, ile razy 4 mieści się w 7 i ile zostaje."
+    },
+    {
+      "id": 5,
+      "section": "Ułamki na osi liczbowej",
+      "type": "numeric",
+      "prompt": "Pomiędzy 0 a 1 jest 8 równych kresek (mianownik 8). Która kreska to $\\dfrac{1}{4}$? Podaj ułamek o mianowniku 8.",
+      "answer": "2/8",
+      "hint": "Rozszerz $\\dfrac{1}{4}$ tak, żeby mianownik wyszedł 8. Pomyśl: $4 \\cdot ? = 8$."
+    },
+    {
+      "id": 6,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{9}{12}$ do najprostszej postaci.",
+      "answer": "3/4",
+      "hint": "Spróbuj podzielić licznik i mianownik przez tę samą małą liczbę. Tu pasuje 3."
+    },
+    {
+      "id": 7,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{15}{20}$ do najprostszej postaci.",
+      "answer": "3/4",
+      "hint": "Czy 15 i 20 mają wspólny dzielnik? Spróbuj 5."
+    },
+    {
+      "id": 8,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{14}{21}$ do najprostszej postaci.",
+      "answer": "2/3",
+      "hint": "Zauważ, że 14 i 21 są w tabliczce mnożenia przez 7."
+    },
+    {
+      "id": 9,
+      "section": "Skracanie ułamków",
+      "type": "numeric",
+      "prompt": "Skróć ułamek $\\dfrac{18}{24}$ do nieskracalnej postaci.",
+      "answer": "3/4",
+      "hint": "Możesz skracać po kawałku (najpierw przez 2, potem przez 3), albo od razu przez 6."
+    },
+    {
+      "id": 10,
+      "section": "Skracanie ułamków",
+      "type": "matching",
+      "prompt": "Połącz ułamek z jego najprostszą postacią.",
+      "leftHeader": "Ułamek",
+      "rightHeader": "Najprostsza postać",
+      "left": [
+        { "id": "a", "label": "$\\dfrac{8}{20}$" },
+        { "id": "b", "label": "$\\dfrac{12}{18}$" },
+        { "id": "c", "label": "$\\dfrac{20}{25}$" },
+        { "id": "d", "label": "$\\dfrac{9}{15}$" }
+      ],
+      "right": [
+        { "id": "1", "label": "$\\dfrac{2}{3}$" },
+        { "id": "2", "label": "$\\dfrac{4}{5}$" },
+        { "id": "3", "label": "$\\dfrac{3}{5}$" },
+        { "id": "4", "label": "$\\dfrac{2}{5}$" }
+      ],
+      "pairs": [["a", "4"], ["b", "1"], ["c", "2"], ["d", "3"]],
+      "hint": "Skróć każdy ułamek osobno do najprostszej postaci, a potem znajdź parę."
+    },
+    {
+      "id": 11,
+      "section": "Skracanie ułamków",
+      "type": "multi-mcq",
+      "prompt": "Które ułamki **są** nieskracalne? Zaznacz wszystkie.",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{5}{8}$", "correct": true },
+        { "id": "b", "label": "$\\dfrac{6}{10}$", "correct": false },
+        { "id": "c", "label": "$\\dfrac{7}{9}$", "correct": true },
+        { "id": "d", "label": "$\\dfrac{9}{15}$", "correct": false },
+        { "id": "e", "label": "$\\dfrac{4}{11}$", "correct": true }
+      ],
+      "hint": "Sprawdź każdy: czy licznik i mianownik mają jakąś wspólną liczbę, przez którą oba się dzielą?"
+    },
+    {
+      "id": 12,
+      "section": "Skracanie ułamków",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{10}{15} = \\dfrac{2}{3}$?",
+      "answer": true,
+      "hint": "10 i 15 mają wspólny dzielnik — popatrz, co dzieli oba."
+    },
+    {
+      "id": 13,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz: $\\dfrac{2}{5} = \\dfrac{?}{15}$",
+      "answer": "6",
+      "hint": "Mianownik 5 zmienia się w 15 — to mnożenie przez 3. Licznik leci tak samo."
+    },
+    {
+      "id": 14,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz: $\\dfrac{3}{7} = \\dfrac{?}{21}$",
+      "answer": "9",
+      "hint": "Ile razy musisz pomnożyć 7, żeby wyszło 21? Tyle samo razy mnoży się licznik."
+    },
+    {
+      "id": 15,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz: $\\dfrac{4}{9} = \\dfrac{?}{27}$",
+      "answer": "12",
+      "hint": "Z 9 do 27 — to razy 3. To samo robisz z licznikiem."
+    },
+    {
+      "id": 16,
+      "section": "Rozszerzanie ułamków",
+      "type": "numeric",
+      "prompt": "Rozszerz: $\\dfrac{5}{6} = \\dfrac{?}{30}$",
+      "answer": "25",
+      "hint": "Mianownik 6 urósł do 30 — to mnożenie przez 5. Licznik robi to samo."
+    },
+    {
+      "id": 17,
+      "section": "Rozszerzanie ułamków",
+      "type": "truefalse",
+      "prompt": "Czy $\\dfrac{2}{7} = \\dfrac{6}{21}$?",
+      "answer": true,
+      "hint": "Sprawdź: czy mnożąc górę i dół $\\dfrac{2}{7}$ przez tę samą liczbę, wyjdzie $\\dfrac{6}{21}$?"
+    },
+    {
+      "id": 18,
+      "section": "Rozszerzanie ułamków",
+      "type": "mcq",
+      "prompt": "Który ułamek to $\\dfrac{3}{4}$ rozszerzone do mianownika 16?",
+      "choices": [
+        { "id": "a", "label": "$\\dfrac{9}{16}$", "correct": false },
+        { "id": "b", "label": "$\\dfrac{12}{16}$", "correct": true },
+        { "id": "c", "label": "$\\dfrac{6}{16}$", "correct": false }
+      ],
+      "hint": "Mianownik 4 musi urosnąć do 16 — to razy 4. Licznik leci tak samo."
+    },
+    {
+      "id": 19,
+      "section": "Zadanie tekstowe",
+      "type": "numeric",
+      "prompt": "Yarema zjadł $\\dfrac{6}{8}$ batonika. W postaci nieskracalnej to jaki ułamek?",
+      "answer": "3/4",
+      "hint": "6 i 8 są oba parzyste — to znak, że można skrócić przez 2."
+    },
+    {
+      "id": 20,
+      "section": "Zadanie tekstowe",
+      "type": "numeric",
+      "prompt": "Solomiia ma 24 kredki. $\\dfrac{12}{24}$ z nich to kredki niebieskie. Jaką część (w postaci nieskracalnej) stanowią kredki niebieskie?",
+      "answer": "1/2",
+      "hint": "12 to dokładnie połowa z 24 — to mocna podpowiedź, jaki ułamek wyjdzie."
+    }
+  ]
+}
