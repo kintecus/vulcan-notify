@@ -58,7 +58,9 @@ def _make_mock_client(
     client = AsyncMock()
     client.get_students = AsyncMock(return_value=[STUDENT_A] if students is None else students)
     client.get_periods = AsyncMock(return_value=[PERIOD])
-    client.get_grades = AsyncMock(return_value=[] if grades is None else grades)
+    grade_list = [] if grades is None else grades
+    client.get_grades = AsyncMock(return_value=grade_list)
+    client.get_grades_and_summaries = AsyncMock(return_value=(grade_list, []))
     client.get_attendance = AsyncMock(return_value=[])
     client.get_exams = AsyncMock(return_value=[] if exams is None else exams)
     client.get_homework = AsyncMock(return_value=[] if homework is None else homework)

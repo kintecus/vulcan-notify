@@ -96,7 +96,7 @@ async def sync_student(
         # what Vulcan's parent UI shows as the current grade.
         all_grades: dict[tuple[int, int], Grade] = {}
         for period in periods:
-            grades = await client.get_grades(student, period)
+            grades, summaries = await client.get_grades_and_summaries(student, period)
             for grade in grades:
                 key = (period.id, grade.column_id)
                 existing = all_grades.get(key)
@@ -105,6 +105,8 @@ async def sync_student(
                 elif existing.superseded_by_grade_id is not None and grade.superseded_by_grade_id is None:
                     # Replace the original with the improvement
                     all_grades[key] = grade
+            for summary in summaries:
+                await db.upsert_subject_summary(student.key, summary)
 
         deduplicated = list(all_grades.values())
         if not is_first:
