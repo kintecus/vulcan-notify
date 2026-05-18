@@ -85,12 +85,26 @@ async def sync_student(
     # ── Grades ───────────────────────────────────────────────────
     try:
         periods = await client.get_periods(student)
-        all_grades: dict[int, Grade] = {}  # dedupe by column_id, keep first occurrence
+        for period in periods:
+            await db.upsert_classification_period(
+                student.key, period.id, period.number, period.date_from, period.date_to
+            )
+        # Dedupe by (period_id, column_id). When a column has both an original
+        # and an improvement grade (Vulcan stores them side by side and links
+        # them via idOcenaPoprawiona on the original), prefer the row WITHOUT
+        # superseded_by_grade_id set — that's the improved grade, which is
+        # what Vulcan's parent UI shows as the current grade.
+        all_grades: dict[tuple[int, int], Grade] = {}
         for period in periods:
             grades = await client.get_grades(student, period)
             for grade in grades:
-                if grade.column_id not in all_grades:
-                    all_grades[grade.column_id] = grade
+                key = (period.id, grade.column_id)
+                existing = all_grades.get(key)
+                if existing is None:
+                    all_grades[key] = grade
+                elif existing.superseded_by_grade_id is not None and grade.superseded_by_grade_id is None:
+                    # Replace the original with the improvement
+                    all_grades[key] = grade
 
         deduplicated = list(all_grades.values())
         if not is_first:
