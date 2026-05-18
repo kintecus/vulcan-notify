@@ -43,6 +43,22 @@ class Grade:
 
 
 @dataclass
+class SubjectSummary:
+    """Per (student, period, subject) end-of-term roll-up from Vulcan's Oceny payload.
+
+    Vulcan computes the *partial* grades client-side, but it stores the teacher's
+    end-of-term decisions server-side under each subject. These are what fill the
+    "Przewidywana ocena końcowa" and "Ocena końcowa" columns in the parent UI.
+    """
+
+    subject: str  # przedmiotNazwa
+    period_id: int  # idOkresKlasyfikacyjny
+    final_grade: str | None  # ocenaOkresowa — set after the classification council
+    proposed_final_grade: str | None  # proponowanaOcenaOkresowa — interim proposal
+    use_weighted_average: bool  # uwzglednijWageOcen
+
+
+@dataclass
 class AttendanceEntry:
     lesson_number: int  # numerLekcji
     category: int  # kategoriaFrekwencji (1=present, 2=absent, ...)

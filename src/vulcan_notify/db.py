@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         Lesson,
         Message,
         Student,
+        SubjectSummary,
     )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,18 @@ CREATE TABLE IF NOT EXISTS classification_periods (
     date_to TEXT NOT NULL,
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (student_key, period_id),
+    FOREIGN KEY (student_key) REFERENCES students(key)
+);
+
+CREATE TABLE IF NOT EXISTS subject_summaries (
+    student_key TEXT NOT NULL,
+    period_id INTEGER NOT NULL,
+    subject TEXT NOT NULL,
+    final_grade TEXT,
+    proposed_final_grade TEXT,
+    use_weighted_average INTEGER DEFAULT 1,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_key, period_id, subject),
     FOREIGN KEY (student_key) REFERENCES students(key)
 );
 
@@ -337,6 +350,27 @@ class Database:
             "number=excluded.number, date_from=excluded.date_from, "
             "date_to=excluded.date_to, last_seen=CURRENT_TIMESTAMP",
             (student_key, period_id, number, date_from, date_to),
+        )
+
+    async def upsert_subject_summary(self, student_key: str, summary: SubjectSummary) -> None:
+        await self.db.execute(
+            "INSERT INTO subject_summaries "
+            "(student_key, period_id, subject, final_grade, proposed_final_grade, "
+            "use_weighted_average) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(student_key, period_id, subject) DO UPDATE SET "
+            "final_grade=excluded.final_grade, "
+            "proposed_final_grade=excluded.proposed_final_grade, "
+            "use_weighted_average=excluded.use_weighted_average, "
+            "last_seen=CURRENT_TIMESTAMP",
+            (
+                student_key,
+                summary.period_id,
+                summary.subject,
+                summary.final_grade,
+                summary.proposed_final_grade,
+                1 if summary.use_weighted_average else 0,
+            ),
         )
 
     async def get_grades_for_student(self, student_key: str) -> list[dict[str, object]]:

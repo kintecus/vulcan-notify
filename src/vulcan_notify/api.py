@@ -308,6 +308,63 @@ def _get_subject_averages(
     return result
 
 
+def _get_subject_summaries(
+    student_filter: str | None = None,
+    period_request: str | None = None,
+) -> dict[str, Any]:
+    """Return per-subject end-of-term roll-ups (final + proposed grade) for a period."""
+    db = _connect()
+    result: dict[str, Any] = {}
+
+    query = "SELECT key, name FROM students"
+    params: tuple[str, ...] = ()
+    if student_filter:
+        query += " WHERE name = ?"
+        params = (student_filter,)
+
+    for s in db.execute(query, params):
+        period_id = _resolve_period_id(db, s["key"], period_request)
+        sql = (
+            "SELECT subject, final_grade, proposed_final_grade, use_weighted_average "
+            "FROM subject_summaries WHERE student_key = ?"
+        )
+        sql_params: list[object] = [s["key"]]
+        if period_id is not None:
+            sql += " AND period_id = ?"
+            sql_params.append(period_id)
+        sql += " ORDER BY subject"
+
+        rows = [
+            {
+                "subject": r["subject"],
+                "final_grade": r["final_grade"],
+                "proposed_final_grade": r["proposed_final_grade"],
+                "use_weighted_average": bool(r["use_weighted_average"]),
+            }
+            for r in db.execute(sql, sql_params)
+        ]
+        # Resolve period metadata for the response so HA templates know which
+        # term they're looking at without a second call.
+        period_meta = None
+        if period_id is not None:
+            p = db.execute(
+                "SELECT period_id, number, date_from, date_to "
+                "FROM classification_periods WHERE student_key = ? AND period_id = ?",
+                (s["key"], period_id),
+            ).fetchone()
+            if p:
+                period_meta = {
+                    "id": p["period_id"],
+                    "number": p["number"],
+                    "date_from": p["date_from"],
+                    "date_to": p["date_to"],
+                }
+        result[s["name"]] = {"period": period_meta, "subjects": rows}
+
+    db.close()
+    return result
+
+
 def _get_schedule(
     student_filter: str | None = None,
     only_substitutions: bool = False,
@@ -596,6 +653,12 @@ async def handle_grades_by_subject(request: web.Request) -> web.Response:
     return web.json_response(_get_subject_averages(student, period))
 
 
+async def handle_grades_summary(request: web.Request) -> web.Response:
+    student = request.query.get("student")
+    period = request.query.get("period")
+    return web.json_response(_get_subject_summaries(student, period))
+
+
 async def handle_grades(request: web.Request) -> web.Response:
     n = int(request.query.get("n", "5"))
     return web.json_response(_get_grades(n))
@@ -632,6 +695,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/grades/average", handle_grades_average)
     app.router.add_get("/api/grades/monthly", handle_grades_monthly)
     app.router.add_get("/api/grades/by-subject", handle_grades_by_subject)
+    app.router.add_get("/api/grades/summary", handle_grades_summary)
     app.router.add_get("/api/schedule", handle_schedule)
     app.router.add_get("/calendar/{student}.ics", handle_calendar)
     app.router.add_get("/api/grades", handle_grades)

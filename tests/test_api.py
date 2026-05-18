@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from vulcan_notify import api as api_mod
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
-from vulcan_notify.models import Exam, Grade, Student
+from vulcan_notify.models import Exam, Grade, Student, SubjectSummary
 
 
 @pytest.fixture
@@ -221,6 +221,57 @@ async def test_monthly_excludes_superseded(db_with_improvements: Path) -> None:
     # plus the clean 4 also on 20.04.2026
     assert by_key["2026-04"]["count"] == 2
     assert by_key["2026-04"]["average"] == round((4.75 + 4) / 2, 2)
+
+
+@pytest.fixture
+async def db_with_summaries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    db_path = tmp_path / "summary.db"
+    monkeypatch.setattr(settings, "db_path", db_path)
+    database = Database(db_path)
+    await database.connect()
+    await database.upsert_student(
+        Student(key="S1", name="Solomiia", class_name="4E", school="Sz",
+                diary_id=1, mailbox_key=None),
+    )
+    await database.upsert_classification_period("S1", 100, 1, "2025-09-01", "2026-01-31")
+    await database.upsert_classification_period("S1", 200, 2, "2026-02-01", "2026-06-30")
+    # Okres 1: finals set
+    for subj, final in [("Matematyka", "3"), ("Język polski", "4"), ("Plastyka", "6")]:
+        await database.upsert_subject_summary(
+            "S1",
+            SubjectSummary(subject=subj, period_id=100, final_grade=final,
+                          proposed_final_grade=None, use_weighted_average=True),
+        )
+    # Okres 2: finals blank, one proposed
+    for subj, prop in [("Matematyka", None), ("Język polski", None), ("Plastyka", "5+")]:
+        await database.upsert_subject_summary(
+            "S1",
+            SubjectSummary(subject=subj, period_id=200, final_grade=None,
+                          proposed_final_grade=prop, use_weighted_average=True),
+        )
+    await database.db.commit()
+    await database.close()
+    return db_path
+
+
+async def test_subject_summaries_okres_1(db_with_summaries: Path) -> None:
+    result = api_mod._get_subject_summaries(period_request="1")
+    body = result["Solomiia"]
+    assert body["period"]["number"] == 1
+    by_subject = {s["subject"]: s for s in body["subjects"]}
+    assert by_subject["Matematyka"]["final_grade"] == "3"
+    assert by_subject["Język polski"]["final_grade"] == "4"
+    assert by_subject["Plastyka"]["final_grade"] == "6"
+    assert all(s["proposed_final_grade"] is None for s in body["subjects"])
+
+
+async def test_subject_summaries_okres_2_proposed_only(db_with_summaries: Path) -> None:
+    result = api_mod._get_subject_summaries(period_request="2")
+    body = result["Solomiia"]
+    by_subject = {s["subject"]: s for s in body["subjects"]}
+    assert all(s["final_grade"] is None for s in body["subjects"])
+    assert by_subject["Plastyka"]["proposed_final_grade"] == "5+"
+    assert by_subject["Matematyka"]["proposed_final_grade"] is None
 
 
 async def test_grade_to_numeric_logs_unparseable(caplog: pytest.LogCaptureFixture) -> None:

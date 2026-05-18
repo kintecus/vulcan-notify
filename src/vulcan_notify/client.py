@@ -20,6 +20,7 @@ from vulcan_notify.models import (
     Lesson,
     Message,
     Student,
+    SubjectSummary,
 )
 
 logger = logging.getLogger(__name__)
@@ -181,15 +182,39 @@ class VulcanClient:
         ]
 
     async def get_grades(self, student: Student, period: ClassificationPeriod) -> list[Grade]:
+        grades, _ = await self.get_grades_and_summaries(student, period)
+        return grades
+
+    async def get_grades_and_summaries(
+        self, student: Student, period: ClassificationPeriod
+    ) -> tuple[list[Grade], list[SubjectSummary]]:
+        """Fetch /api/Oceny once, parse both per-grade rows and per-subject summaries."""
         data = await self._request(
             f"/api/Oceny?key={student.key}&idOkresKlasyfikacyjny={period.id}"
         )
         if not data or "ocenyPrzedmioty" not in data:
-            return []
+            return [], []
 
         grades: list[Grade] = []
+        summaries: list[SubjectSummary] = []
         for subject in data["ocenyPrzedmioty"]:
             subject_name = subject.get("przedmiotNazwa", "")
+            final = subject.get("ocenaOkresowa")
+            proposed = subject.get("proponowanaOcenaOkresowa")
+            # Vulcan returns ' ' (single space) for empty cells — normalize to None.
+            if isinstance(final, str) and not final.strip():
+                final = None
+            if isinstance(proposed, str) and not proposed.strip():
+                proposed = None
+            summaries.append(
+                SubjectSummary(
+                    subject=subject_name,
+                    period_id=period.id,
+                    final_grade=final,
+                    proposed_final_grade=proposed,
+                    use_weighted_average=bool(subject.get("uwzglednijWageOcen", True)),
+                )
+            )
             for column in subject.get("kolumnyOcenyCzastkowe") or []:
                 for grade in column.get("oceny", []):
                     grades.append(
@@ -209,7 +234,7 @@ class VulcanClient:
                             superseded_by_grade_id=grade.get("idOcenaPoprawiona"),
                         )
                     )
-        return grades
+        return grades, summaries
 
     # ── Attendance ───────────────────────────────────────────────────
 
