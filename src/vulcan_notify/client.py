@@ -220,13 +220,20 @@ class VulcanClient:
                     grades.append(
                         Grade(
                             column_id=grade.get("idKolumny", column.get("idKolumny", 0)),
-                            value=grade.get("wpis", ""),
+                            # Vulcan returns an explicit null (not an absent key) for some
+                            # fields, so dict.get(key, default) yields None rather than the
+                            # default. These columns are NOT NULL in the DB, so coalesce the
+                            # null to "" — otherwise upsert_grade raises IntegrityError, the
+                            # grade never persists, and it re-publishes to MQTT every cycle.
+                            value=grade.get("wpis") or "",
                             date=grade.get("dataOceny", ""),
                             subject=subject_name,
-                            column_name=grade.get("nazwaKolumny", column.get("nazwaKolumny", "")),
-                            category=grade.get(
-                                "kategoriaKolumny", column.get("kategoriaKolumny", "")
-                            ),
+                            column_name=grade.get("nazwaKolumny")
+                            or column.get("nazwaKolumny")
+                            or "",
+                            category=grade.get("kategoriaKolumny")
+                            or column.get("kategoriaKolumny")
+                            or "",
                             weight=float(grade.get("waga", 1) or 1),
                             teacher=grade.get("nauczyciel", ""),
                             changed_since_login=grade.get("zmienionaOdOstatniegoLogowania", False),

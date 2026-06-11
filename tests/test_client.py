@@ -172,6 +172,60 @@ async def test_get_grades(session_data: dict, student: Student) -> None:
     assert grades[0].weight == 2
 
 
+async def test_get_grades_null_category_coalesced(
+    session_data: dict, student: Student
+) -> None:
+    """Vulcan sometimes returns an explicit null for kategoriaKolumny/nazwaKolumny/wpis.
+
+    dict.get(key, default) returns None (not the default) on an explicit null, and
+    these columns are NOT NULL in the DB. Left as None they raise IntegrityError in
+    upsert_grade, the grade never persists, and it re-publishes to MQTT every sync
+    cycle. The parser must coalesce explicit nulls to "".
+    """
+    from vulcan_notify.models import ClassificationPeriod
+
+    grades_response = {
+        "ocenyPrzedmioty": [
+            {
+                "przedmiotNazwa": "Matematyka",
+                "kolumnyOcenyCzastkowe": [
+                    {
+                        "idKolumny": 200,
+                        "kategoriaKolumny": None,
+                        "nazwaKolumny": None,
+                        "oceny": [
+                            {
+                                "idKolumny": 200,
+                                "wpis": None,
+                                "dataOceny": "20.06.2026",
+                                "kategoriaKolumny": None,
+                                "nazwaKolumny": None,
+                                "waga": 1,
+                                "nauczyciel": "Nowak A.",
+                                "zmienionaOdOstatniegoLogowania": False,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    mock_resp = _mock_response(grades_response)
+    mock_sess = _mock_session(mock_resp)
+
+    client = VulcanClient(session_data)
+    client._http = mock_sess
+
+    period = ClassificationPeriod(id=1, number=2, date_from="2026-02-01", date_to="2026-08-31")
+    grades = await client.get_grades(student, period)
+
+    assert len(grades) == 1
+    assert grades[0].category == ""
+    assert grades[0].column_name == ""
+    assert grades[0].value == ""
+
+
 async def test_get_grades_empty(session_data: dict, student: Student) -> None:
     from vulcan_notify.models import ClassificationPeriod
 
