@@ -26,11 +26,29 @@ fi
 SHORT_SHA=$(echo "$REMOTE" | cut -c1-7)
 echo "[deploy] New changes detected: ${LOCAL:0:7} -> $SHORT_SHA"
 
-if git pull origin main --quiet && docker compose up -d --build --quiet-pull 2>&1; then
+# Advance the working tree so the build context carries the new code, but be ready
+# to undo it. If the build fails, roll HEAD back to $LOCAL: the timer's gate is
+# "HEAD == origin/main", so leaving HEAD advanced after a failed build would make
+# every later run see them equal and silently no-op forever — old container, new
+# HEAD, no retry. Rolling back keeps HEAD != REMOTE so the next run retries.
+if ! git pull origin main --quiet; then
+    notify "Deploy failed" "vulcan-notify git pull FAILED ${LOCAL:0:7} -> $SHORT_SHA" "x,warning" "high"
+    echo "[deploy] FAILED: git pull error" >&2
+    exit 1
+fi
+
+# Build the image WITHOUT touching the running container yet. Only recreate the
+# container if the build succeeds, so a broken build never takes the service down.
+# (`docker compose build` has no --quiet-pull; that flag is up/pull-only.)
+if docker compose build 2>&1; then
+    docker compose up -d --quiet-pull 2>&1
     notify "Deploy success" "vulcan-notify deployed: $SHORT_SHA" "white_check_mark"
     echo "[deploy] Success: $SHORT_SHA"
 else
-    notify "Deploy failed" "vulcan-notify deploy FAILED at $SHORT_SHA" "x,warning" "high"
-    echo "[deploy] FAILED at $SHORT_SHA" >&2
+    # Build failed: revert the working tree so the deploy gate stays open and the
+    # next timer run retries instead of going dormant on un-deployed code.
+    git reset --hard "$LOCAL" --quiet
+    notify "Deploy failed" "vulcan-notify build FAILED at $SHORT_SHA (rolled back to ${LOCAL:0:7}, will retry)" "x,warning" "high"
+    echo "[deploy] FAILED: build error at $SHORT_SHA, rolled back to ${LOCAL:0:7}" >&2
     exit 1
 fi
