@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS students (
     school TEXT NOT NULL,
     diary_id INTEGER NOT NULL,
     mailbox_key TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -266,6 +267,19 @@ class Database:
                 logger.info("Migrating: recreating messages table with new schema")
                 await self.db.execute("DROP TABLE messages")
 
+        # Migrate students table (add active flag)
+        cursor = await self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='students'"
+        )
+        if await cursor.fetchone():
+            col_cursor = await self.db.execute("PRAGMA table_info(students)")
+            columns = {row[1] for row in await col_cursor.fetchall()}
+            if "active" not in columns:
+                logger.info("Migrating: adding active column to students")
+                await self.db.execute(
+                    "ALTER TABLE students ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
+                )
+
         # Migrate grades table (add period_id + superseded_by_grade_id)
         cursor = await self.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='grades'"
@@ -292,7 +306,7 @@ class Database:
             "ON CONFLICT(key) DO UPDATE SET "
             "name=excluded.name, class_name=excluded.class_name, school=excluded.school, "
             "diary_id=excluded.diary_id, mailbox_key=excluded.mailbox_key, "
-            "updated_at=CURRENT_TIMESTAMP",
+            "active=1, updated_at=CURRENT_TIMESTAMP",
             (
                 student.key,
                 student.name,
@@ -302,6 +316,25 @@ class Database:
                 student.mailbox_key,
             ),
         )
+
+    async def deactivate_students_except(self, active_keys: set[str]) -> int:
+        """Mark every student row outside `active_keys` as inactive.
+
+        Vulcan mints a new student key each school year (the key encodes the class
+        register, not just the pupil), so last year's rows linger with all of that
+        year's grades and attendance hanging off them. Rather than delete history,
+        flag the current roster and let read paths filter on it.
+
+        No-ops on an empty set so a failed roster fetch can't deactivate everyone.
+        """
+        if not active_keys:
+            return 0
+        placeholders = ",".join("?" * len(active_keys))
+        cursor = await self.db.execute(
+            f"UPDATE students SET active = 0 WHERE active = 1 AND key NOT IN ({placeholders})",
+            tuple(active_keys),
+        )
+        return cursor.rowcount
 
     async def get_all_students(self) -> list[dict[str, object]]:
         cursor = await self.db.execute(
