@@ -66,6 +66,84 @@ async def seeded_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return db_path
 
 
+@pytest.fixture
+async def rollover_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Seed one pupil across a school-year rollover: retired OLD key, live NEW key.
+
+    Mirrors production, where Vulcan mints a fresh key each September and all of
+    last year's grades stay attached to the retired one.
+    """
+    db_path = tmp_path / "rollover.db"
+    monkeypatch.setattr(settings, "db_path", db_path)
+
+    database = Database(db_path)
+    await database.connect()
+    for key, class_name in (("OLD", "4E"), ("NEW", "5E")):
+        await database.upsert_student(
+            Student(key=key, name="Solomiia", class_name=class_name, school="Sz", diary_id=1,
+                    mailbox_key=None),
+        )
+    await database.upsert_grade(
+        "OLD",
+        Grade(column_id=1, value="5", date="10.05.2026", subject="Math", column_name="Test",
+              category="1", weight=1, teacher="T", changed_since_login=False),
+    )
+
+    today = datetime.now()
+    rows = [
+        ("OLD", (today - timedelta(days=10)).strftime("%Y-%m-%d")),
+        ("NEW", (today + timedelta(days=3)).strftime("%Y-%m-%d")),
+    ]
+    for key, date in rows:
+        await database.db.execute(
+            "INSERT INTO schedule (student_key, date, time_from, time_to, subject, teacher) "
+            "VALUES (?, ?, ?, ?, 'Math', 'T')",
+            (key, date, f"{date}T08:00:00+02:00", f"{date}T08:45:00+02:00"),
+        )
+    await database.db.commit()
+    await database.close()
+    return db_path
+
+
+async def test_grades_exclude_retired_school_year(rollover_db: Path) -> None:
+    """Read paths follow the live key only, and don't emit the pupil twice."""
+    await _retire_old(rollover_db)
+
+    result = api_mod._get_grades()
+
+    assert list(result) == ["Solomiia"]
+    assert result["Solomiia"]["class"] == "5E"
+    assert result["Solomiia"]["grades"] == []
+
+
+async def test_retired_year_grades_are_still_on_disk(rollover_db: Path) -> None:
+    """Retiring a key hides it from the API without destroying the history."""
+    await _retire_old(rollover_db)
+
+    db = api_mod._connect()
+    count = db.execute("SELECT COUNT(*) FROM grades WHERE student_key = 'OLD'").fetchone()[0]
+    db.close()
+
+    assert count == 1
+
+
+async def test_ics_feed_still_spans_both_keys(rollover_db: Path) -> None:
+    """The calendar window straddles September, so it must ignore the active flag."""
+    await _retire_old(rollover_db)
+
+    _key, lessons = api_mod._get_lessons_for_ics("Solomiia", 30, 60)
+
+    assert {lesson["student_key"] for lesson in lessons} == {"OLD", "NEW"}
+
+
+async def _retire_old(db_path: Path) -> None:
+    database = Database(db_path)
+    await database.connect()
+    await database.deactivate_students_except({"NEW"})
+    await database.commit()
+    await database.close()
+
+
 async def test_monthly_averages_year_mode(seeded_db: Path) -> None:
     result = api_mod._get_monthly_averages(year=2026)
     months = result["Solomiia"]["months"]

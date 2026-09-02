@@ -116,10 +116,10 @@ def _get_grade_averages(
     db = _connect()
     result: dict[str, Any] = {}
 
-    query = "SELECT key, name FROM students"
+    query = "SELECT key, name FROM students WHERE active = 1"
     params: tuple[str, ...] = ()
     if student_filter:
-        query += " WHERE name = ?"
+        query += " AND name = ?"
         params = (student_filter,)
 
     for s in db.execute(query, params):
@@ -205,10 +205,10 @@ def _get_monthly_averages(
     db = _connect()
     result: dict[str, Any] = {}
 
-    query = "SELECT key, name FROM students"
+    query = "SELECT key, name FROM students WHERE active = 1"
     params: tuple[str, ...] = ()
     if student_filter:
-        query += " WHERE name = ?"
+        query += " AND name = ?"
         params = (student_filter,)
 
     month_keys = _month_list(year, months)
@@ -263,10 +263,10 @@ def _get_subject_averages(
     db = _connect()
     result: dict[str, Any] = {}
 
-    query = "SELECT key, name FROM students"
+    query = "SELECT key, name FROM students WHERE active = 1"
     params: tuple[str, ...] = ()
     if student_filter:
-        query += " WHERE name = ?"
+        query += " AND name = ?"
         params = (student_filter,)
 
     for s in db.execute(query, params):
@@ -315,10 +315,10 @@ def _get_subject_summaries(
     db = _connect()
     result: dict[str, Any] = {}
 
-    query = "SELECT key, name FROM students"
+    query = "SELECT key, name FROM students WHERE active = 1"
     params: tuple[str, ...] = ()
     if student_filter:
-        query += " WHERE name = ?"
+        query += " AND name = ?"
         params = (student_filter,)
 
     for s in db.execute(query, params):
@@ -380,10 +380,10 @@ def _get_schedule(
     today = datetime.now().strftime("%Y-%m-%d")
     to_date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
 
-    query = "SELECT key, name FROM students"
+    query = "SELECT key, name FROM students WHERE active = 1"
     params: tuple[str, ...] = ()
     if student_filter:
-        query += " WHERE name = ?"
+        query += " AND name = ?"
         params = (student_filter,)
 
     for s in db.execute(query, params):
@@ -435,7 +435,7 @@ def _get_grades(n: int = 5, diagnostic_days: int = 180) -> dict[str, Any]:
     db = _connect()
     students = {}
     diag_cutoff = _date_minus_days(datetime.now().strftime("%Y-%m-%d"), diagnostic_days)
-    for s in db.execute("SELECT key, name, class_name FROM students"):
+    for s in db.execute("SELECT key, name, class_name FROM students WHERE active = 1"):
         grades = []
         non_diag_count = 0
         diagnostics: list[dict[str, Any]] = []
@@ -467,7 +467,7 @@ def _get_homework(n: int = 5) -> dict[str, Any]:
     """Read latest N homework items per student."""
     db = _connect()
     students = {}
-    for s in db.execute("SELECT key, name, class_name FROM students"):
+    for s in db.execute("SELECT key, name, class_name FROM students WHERE active = 1"):
         items = []
         for h in db.execute(
             "SELECT date, subject, content "
@@ -503,10 +503,10 @@ def _get_exams(
     today = datetime.now().strftime("%Y-%m-%d")
     to_date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
 
-    query = "SELECT key, name, class_name FROM students"
+    query = "SELECT key, name, class_name FROM students WHERE active = 1"
     params: tuple[str, ...] = ()
     if student_filter:
-        query += " WHERE name = ?"
+        query += " AND name = ?"
         params = (student_filter,)
 
     for s in db.execute(query, params):
@@ -573,6 +573,10 @@ def _get_lessons_for_ics(
     A student gets a fresh Vulcan key every school year (the key encodes the class
     register, not just the pupil), so one name can map to several keys. Union across
     all of them and let the date window drop the stale years.
+
+    Deliberately does NOT filter on students.active, unlike the read paths above:
+    `days_past` reaches back over a September rollover, where the lessons that
+    belong in the feed still hang off last year's now-inactive key.
 
     Returns (student_key, lessons). Empty student_key if student not found.
     """
