@@ -317,6 +317,13 @@ async def sync_all(
             await db.complete_sync_run(run_id, "completed", 0, 0, 0)
             return FullSyncResult(student_results=[])
 
+        # Vulcan's current roster is the source of truth for which keys are live.
+        # Do this before syncing so a mid-loop failure still leaves the flags right.
+        retired = await db.deactivate_students_except({s.key for s in students})
+        if retired:
+            logger.info("Retired %d student row(s) from a previous school year", retired)
+            await db.commit()
+
         student_results: list[SyncResult] = []
         for student in students:
             logger.info("Syncing %s (%s)...", student.name, student.class_name)

@@ -226,6 +226,123 @@ async def test_sync_state(db: Database) -> None:
     assert await db.get_state("last_sync") == "2026-03-15T13:00:00"
 
 
+def _student(key: str, name: str = "Solomiia", class_name: str = "4E") -> Student:
+    return Student(
+        key=key,
+        name=name,
+        class_name=class_name,
+        school="Szkola",
+        diary_id=1001,
+        mailbox_key="aaa",
+    )
+
+
+async def _active_map(db: Database) -> dict[str, int]:
+    cursor = await db.db.execute("SELECT key, active FROM students")
+    return {row[0]: row[1] for row in await cursor.fetchall()}
+
+
+async def test_new_student_is_active_by_default(db: Database) -> None:
+    await db.upsert_student(_student("KEY1"))
+    assert await _active_map(db) == {"KEY1": 1}
+
+
+async def test_deactivate_students_except_retires_previous_year(db: Database) -> None:
+    """A September rollover leaves last year's key behind; it should go inactive."""
+    await db.upsert_student(_student("OLD", class_name="4E"))
+    await db.upsert_student(_student("NEW", class_name="5E"))
+
+    retired = await db.deactivate_students_except({"NEW"})
+
+    assert retired == 1
+    assert await _active_map(db) == {"OLD": 0, "NEW": 1}
+
+
+async def test_deactivate_students_except_is_idempotent(db: Database) -> None:
+    await db.upsert_student(_student("OLD"))
+    await db.upsert_student(_student("NEW"))
+
+    assert await db.deactivate_students_except({"NEW"}) == 1
+    # Second run has nothing left to retire.
+    assert await db.deactivate_students_except({"NEW"}) == 0
+
+
+async def test_deactivate_students_except_ignores_empty_set(db: Database) -> None:
+    """A failed roster fetch must not deactivate the whole table."""
+    await db.upsert_student(_student("KEY1"))
+    await db.upsert_student(_student("KEY2"))
+
+    retired = await db.deactivate_students_except(set())
+
+    assert retired == 0
+    assert await _active_map(db) == {"KEY1": 1, "KEY2": 1}
+
+
+async def test_upsert_student_reactivates_retired_key(db: Database) -> None:
+    await db.upsert_student(_student("KEY1"))
+    await db.deactivate_students_except({"OTHER"})
+    assert (await _active_map(db))["KEY1"] == 0
+
+    await db.upsert_student(_student("KEY1"))
+
+    assert (await _active_map(db))["KEY1"] == 1
+
+
+async def test_deactivating_preserves_history(db: Database) -> None:
+    """Retiring a key must not touch the grades hanging off it."""
+    await db.upsert_student(_student("OLD"))
+    await db.upsert_grade(
+        "OLD",
+        Grade(
+            column_id=100,
+            value="5",
+            date="10.05.2026",
+            subject="Matematyka",
+            column_name="Sprawdzian",
+            category="Biezace",
+            weight=3.0,
+            teacher="Kowalska",
+            changed_since_login=False,
+        ),
+    )
+
+    await db.deactivate_students_except({"NEW"})
+
+    cursor = await db.db.execute("SELECT COUNT(*) FROM grades WHERE student_key = 'OLD'")
+    assert (await cursor.fetchone())[0] == 1
+
+
+async def test_migration_adds_active_column(tmp_path) -> None:
+    """An existing DB predating the active flag gets it, defaulting to active."""
+    import aiosqlite
+
+    db_path = tmp_path / "preactive.db"
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.execute(
+            "CREATE TABLE students ("
+            "key TEXT PRIMARY KEY, name TEXT NOT NULL, class_name TEXT NOT NULL, "
+            "school TEXT NOT NULL, diary_id INTEGER NOT NULL, mailbox_key TEXT, "
+            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        )
+        await conn.execute(
+            "INSERT INTO students (key, name, class_name, school, diary_id) "
+            "VALUES ('OLD', 'Solomiia', '4E', 'Szkola', 1001)"
+        )
+        await conn.commit()
+
+    db = Database(db_path)
+    await db.connect()
+
+    cursor = await db.db.execute("PRAGMA table_info(students)")
+    columns = {row[1] for row in await cursor.fetchall()}
+    assert "active" in columns
+
+    cursor = await db.db.execute("SELECT active FROM students WHERE key = 'OLD'")
+    assert (await cursor.fetchone())[0] == 1
+
+    await db.close()
+
+
 async def test_migration_drops_legacy_tables(tmp_path) -> None:
     """Verify old schema tables are dropped during migration."""
     import aiosqlite
