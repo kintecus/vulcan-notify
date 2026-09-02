@@ -58,6 +58,8 @@ def build_calendar(
     """Build an RFC 5545 iCalendar document from schedule rows.
 
     `lessons` rows are the dicts returned by Database.get_lessons_for_student.
+    `student_key` is the UID salt fallback for rows that don't carry their own
+    (rows may span several keys when a school year rolls over).
     """
     now_utc = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     lines: list[str] = [
@@ -103,7 +105,7 @@ def build_calendar(
             desc_lines.append(f"Remarks: {remarks}")
         description = "\n".join(desc_lines)
 
-        uid = _stable_uid(student_key, date, time_from, subject)
+        uid = _stable_uid(str(lesson.get("student_key") or student_key), date, time_from, subject)
 
         lines.extend(
             [
