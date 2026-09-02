@@ -570,11 +570,16 @@ def _get_lessons_for_ics(
 ) -> tuple[str, list[dict[str, Any]]]:
     """Fetch all lessons (not only substitutions) for one student as a list of dicts.
 
+    A student gets a fresh Vulcan key every school year (the key encodes the class
+    register, not just the pupil), so one name can map to several keys. Union across
+    all of them and let the date window drop the stale years.
+
     Returns (student_key, lessons). Empty student_key if student not found.
     """
     db = _connect()
-    student_row = db.execute("SELECT key FROM students WHERE name = ?", (student_name,)).fetchone()
-    if not student_row:
+    key_rows = db.execute("SELECT key FROM students WHERE name = ?", (student_name,))
+    keys = [r["key"] for r in key_rows]
+    if not keys:
         db.close()
         return "", []
 
@@ -582,18 +587,19 @@ def _get_lessons_for_ics(
     date_from = (today - timedelta(days=days_past)).strftime("%Y-%m-%d")
     date_to = (today + timedelta(days=days_future)).strftime("%Y-%m-%d")
 
+    placeholders = ",".join("?" * len(keys))
     rows = db.execute(
-        "SELECT date, time_from, time_to, subject, teacher, room, group_name, "
+        "SELECT student_key, date, time_from, time_to, subject, teacher, room, group_name, "
         "annotation, is_extra, sub_teacher, sub_room, sub_type, absence_info, remarks "
-        "FROM schedule WHERE student_key = ? AND date >= ? AND date <= ? "
+        f"FROM schedule WHERE student_key IN ({placeholders}) AND date >= ? AND date <= ? "
         "ORDER BY date ASC, time_from ASC",
-        (student_row["key"], date_from, date_to),
+        (*keys, date_from, date_to),
     ).fetchall()
-    key = student_row["key"]
     db.close()
 
     lessons = [
         {
+            "student_key": r["student_key"],
             "date": r["date"],
             "time_from": r["time_from"],
             "time_to": r["time_to"],
@@ -611,7 +617,7 @@ def _get_lessons_for_ics(
         }
         for r in rows
     ]
-    return key, lessons
+    return keys[0], lessons
 
 
 async def handle_calendar(request: web.Request) -> web.Response:
