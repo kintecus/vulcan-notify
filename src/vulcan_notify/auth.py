@@ -141,9 +141,14 @@ async def auto_login(session_path: Path, login: str, password: str) -> dict[str,
     1. Navigate to eduvulcan.pl/logowanie
     2. Fill login, click Dalej
     3. Fill password, click Zaloguj
-    4. Wait for redirect to eduvulcan.pl dashboard
-    5. Click first student to trigger redirect to uczen.eduvulcan.pl
+    4. Wait for redirect to eduvulcan.pl
+    5. Open the profile picker at /dostep-do-dziennika/ and click the first
+       student's /dziennik?<sso-token> link, which redirects to uczen.eduvulcan.pl
     6. Capture cookies and save session
+
+    Note: before the 26.8 redesign the post-login landing page itself carried the
+    student links. It is now a marketing homepage, so the picker must be opened
+    explicitly.
     """
     dashboard_url = ""
     login_complete = asyncio.Event()
@@ -198,39 +203,36 @@ async def auto_login(session_path: Path, login: str, password: str) -> dict[str,
         await page.fill('input[type="password"]', password)
         await page.click('button:has-text("Zaloguj")')
 
-        # Wait for eduvulcan.pl dashboard to load (student picker)
+        # Wait for the post-login redirect back onto eduvulcan.pl
         await page.wait_for_url("**/eduvulcan.pl/**", timeout=30000)
-        await asyncio.sleep(2)
 
-        # Step 3: click first student to trigger redirect to uczen.eduvulcan.pl
-        # Try multiple strategies to find a clickable student entry
-        clicked = False
-        for selector in [
-            'a[href*="uczen.eduvulcan.pl"]',
-            'a[href*="/App/"]',
-            '[class*="student"]',
-            '[class*="uczen"]',
-            '[class*="account"]',
-        ]:
-            loc = page.locator(selector).first
+        # Step 3: open the profile picker and click the first student
+        logger.info("Auto-login: opening profile picker")
+        await page.goto(
+            "https://eduvulcan.pl/dostep-do-dziennika/", wait_until="networkidle"
+        )
+        await asyncio.sleep(1)
+
+        # The onboarding tour and journal-shortcut bar render above the profile
+        # tiles and swallow the click, so dismiss them first.
+        for overlay in [".vdpo-tutorial-tooltip__close", ".vdpo-journal-shortcut__close"]:
+            loc = page.locator(overlay).first
             if await loc.count():
-                await loc.click()
-                clicked = True
-                break
+                try:
+                    await loc.click(timeout=2000)
+                except Exception:
+                    logger.debug("Auto-login: could not dismiss %s", overlay)
 
-        if not clicked:
-            # Last resort: use JavaScript to find and click the first student link
-            await page.evaluate("""
-                () => {
-                    const links = document.querySelectorAll('a[href]');
-                    for (const link of links) {
-                        if (link.href.includes('uczen.eduvulcan.pl')) {
-                            link.click();
-                            return;
-                        }
-                    }
-                }
-            """)
+        student = page.locator('a[href*="/dziennik?"]').first
+        if not await student.count():
+            await browser.close()
+            raise RuntimeError(
+                "Auto-login: no student profiles on /dostep-do-dziennika/. "
+                "The accounts are usually suspended pending a Regulamin change - "
+                "check https://eduvulcan.pl/konto/dostepy for an 'Aktywuj' prompt."
+            )
+
+        await student.click()
 
         try:
             await asyncio.wait_for(login_complete.wait(), timeout=30)
