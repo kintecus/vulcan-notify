@@ -9,5 +9,5 @@ CTID="${CTID:-103}"
 
 echo "Deploying to LXC $CTID via $PVE_HOST..."
 ssh "root@$PVE_HOST" \
-    "pct exec $CTID -- sh -lc 'cd /opt/vulcan-notify && git pull origin main && docker compose up -d --build'"
+    "pct exec $CTID -- sh -lc 'cd /opt/vulcan-notify && git pull origin main && docker compose up -d --build --remove-orphans'"
 echo "Done."
