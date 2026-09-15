@@ -41,7 +41,10 @@ fi
 # container if the build succeeds, so a broken build never takes the service down.
 # (`docker compose build` has no --quiet-pull; that flag is up/pull-only.)
 if docker compose build 2>&1; then
-    docker compose up -d --quiet-pull 2>&1
+    # --remove-orphans matters: the single `vulcan-notify` service was split into
+    # `vulcan-api` and `vulcan-sync`, and without it the old container keeps port
+    # 8585 bound so the new API never starts.
+    docker compose up -d --quiet-pull --remove-orphans 2>&1
     notify "Deploy success" "vulcan-notify deployed: $SHORT_SHA" "white_check_mark"
     echo "[deploy] Success: $SHORT_SHA"
 else
