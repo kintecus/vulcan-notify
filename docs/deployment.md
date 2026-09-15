@@ -85,20 +85,18 @@ docker compose logs -f
 
 The first sync will auto-login via headless Chromium using your credentials and save the session to `data/session.json`. Subsequent syncs reuse the session until it expires, then re-authenticate automatically.
 
-## 4. Tailscale (recommended)
+## 4. Remote access
 
-Install Tailscale inside the LXC for direct SSH access from your Mac:
+LXC 103 is **not** a tailnet node and does not run Tailscale. It is reached through the PVE host, which is one, using `pct exec`. The `tools.dwelf-forel.ts.net` name older notes refer to never resolved — do not try to reach the LXC directly.
 
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --hostname tools
-```
-
-LXC 103 is **not** a tailnet node, so it is reached through the PVE host with `pct exec`. The old `tools.dwelf-forel.ts.net` name never resolved. Set up SSH key auth to the PVE host:
+Set up SSH key auth to the PVE host instead:
 
 ```bash
 # From your Mac
 ssh-copy-id root@pve.dwelf-forel.ts.net
+
+# Then reach the LXC through it
+ssh root@pve.dwelf-forel.ts.net "pct exec 103 -- sh -lc 'cd /opt/vulcan-notify && docker compose ps'"
 ```
 
 ## 5. GitHub deploy key
@@ -114,26 +112,33 @@ Add the public key as a read-only deploy key at `github.com/kintecus/vulcan-noti
 
 ## 6. Management
 
+Two containers run off one image (see `docker-compose.yml`): **`vulcan-api`** serves port 8585, **`vulcan-sync`** runs the poll loop. There is no `vulcan-notify` service any more — it was split on 2026-09-15 so each process gets its own restart supervision.
+
 ```bash
-# View logs
-docker compose logs --tail 50
+# View logs — pick the container, the two are very different in volume
+docker compose logs --tail 50 vulcan-sync   # sync activity
+docker compose logs --tail 50 vulcan-api    # HTTP server
 
 # Restart (e.g., after .env changes)
 docker compose restart
 
 # Update to latest
-git pull && docker compose up -d --build
+git pull && docker compose up -d --build --remove-orphans
 
-# Run a one-off sync
-docker compose exec vulcan-notify uv run vulcan-notify sync
+# Run a one-off sync without disturbing the loop
+docker compose run --rm vulcan-sync uv run vulcan-notify sync
 
 # Check session validity
-docker compose exec vulcan-notify uv run vulcan-notify test
+docker compose run --rm vulcan-sync uv run vulcan-notify test
 ```
+
+`--remove-orphans` matters on any manual `up`: without it a leftover container from the pre-split layout keeps port 8585 bound and the new API cannot start.
 
 ## 7. Auto-deploy (CI/CD)
 
-A systemd timer on the LXC polls GitHub every 5 minutes and rebuilds the container if main has new commits. Deploy notifications are sent via ntfy.sh.
+**Pushing to `main` deploys.** A systemd timer on the LXC polls `origin/main` every 5 minutes and rebuilds if there are new commits, so a push reaches production within ~5 minutes with no action from you. There is no GitHub Actions workflow — this timer is the whole CI/CD path. Deploy notifications go to ntfy.sh.
+
+`vulcan-deploy.sh` builds the image before recreating the container and rolls `HEAD` back on a build failure, so a broken build never takes the service down and never leaves the timer dormant on undeployed code.
 
 ### Install the systemd units
 
@@ -155,7 +160,7 @@ systemctl start vulcan-deploy.service
 journalctl -u vulcan-deploy --no-pager -n 20
 ```
 
-### Instant deploy from your Mac
+### Skipping the 5-minute wait
 
 Push to GitHub, then:
 
@@ -163,7 +168,7 @@ Push to GitHub, then:
 ./deploy.sh
 ```
 
-This SSHs to the tools LXC and runs pull + rebuild. Override the host with `TOOLS_HOST=<host> ./deploy.sh`.
+This only shortcuts the timer's polling interval; it is not the sole deploy path. It SSHes to the **PVE host** and `pct exec`s into LXC 103 to run pull + rebuild, because the LXC itself is not reachable over the tailnet. Override with `PVE_HOST=<host> ./deploy.sh`.
 
 ## 8. Monitoring
 
@@ -175,7 +180,10 @@ journalctl -u vulcan-deploy --no-pager -n 50
 ssh root@pve.dwelf-forel.ts.net "pct exec 103 -- sh -lc 'cd /opt/vulcan-notify && docker compose ps'"
 
 # Recent sync logs
-ssh root@pve.dwelf-forel.ts.net "pct exec 103 -- sh -lc 'cd /opt/vulcan-notify && docker compose logs --tail 30'"
+ssh root@pve.dwelf-forel.ts.net "pct exec 103 -- sh -lc 'cd /opt/vulcan-notify && docker compose logs --tail 30 vulcan-sync'"
+
+# Is the data actually current? (503 = stale; ?soft=1 for the same body as 200)
+ssh root@pve.dwelf-forel.ts.net "pct exec 103 -- curl -s http://localhost:8585/api/health" | jq '.status, .stale_sections'
 ```
 
 ## 9. DNS fix for LXC
