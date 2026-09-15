@@ -37,6 +37,11 @@ class SyncResult:
     new_substitutions: list[Change] = field(default_factory=list)
     unread_messages: int = 0
     is_first_sync: bool = False
+    failed_sections: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def has_failures(self) -> bool:
+        return bool(self.failed_sections)
 
     @property
     def has_changes(self) -> bool:
@@ -72,8 +77,14 @@ async def sync_student(
     client: VulcanClient,
     db: Database,
     student: Student,
+    run_id: int | None = None,
 ) -> SyncResult:
-    """Sync a single student's data and return detected changes."""
+    """Sync a single student's data and return detected changes.
+
+    Each section records its own outcome against run_id. A section that raises is
+    logged, recorded as failed, and does NOT stamp a freshness timestamp -- that is
+    what makes a partial outage visible instead of looking like a quiet day.
+    """
     await db.upsert_student(student)
 
     # Check if this is the first sync for this student
@@ -81,6 +92,21 @@ async def sync_student(
     is_first = last_sync is None
 
     result = SyncResult(student=student, is_first_sync=is_first)
+
+    async def section_ok(section: str, item_count: int) -> None:
+        if run_id is not None:
+            await db.record_section(
+                run_id, section, "ok", student_key=student.key, item_count=item_count
+            )
+
+    async def section_failed(section: str, exc: Exception) -> None:
+        detail = f"{type(exc).__name__}: {exc}"[:500]
+        result.failed_sections[section] = detail
+        logger.exception("Failed to sync %s for %s", section, student.name)
+        if run_id is not None:
+            await db.record_section(
+                run_id, section, "failed", student_key=student.key, error_detail=detail
+            )
 
     # ── Grades ───────────────────────────────────────────────────
     try:
@@ -114,8 +140,9 @@ async def sync_student(
 
         for grade in deduplicated:
             await db.upsert_grade(student.key, grade)
-    except Exception:
-        logger.exception("Failed to sync grades for %s", student.name)
+        await section_ok("grades", len(deduplicated))
+    except Exception as exc:
+        await section_failed("grades", exc)
 
     # ── Attendance ───────────────────────────────────────────────
     try:
@@ -132,8 +159,9 @@ async def sync_student(
 
         for entry in attendance:
             await db.upsert_attendance(student.key, entry)
-    except Exception:
-        logger.exception("Failed to sync attendance for %s", student.name)
+        await section_ok("attendance", len(attendance))
+    except Exception as exc:
+        await section_failed("attendance", exc)
 
     # ── Exams ────────────────────────────────────────────────────
     try:
@@ -167,8 +195,9 @@ async def sync_student(
             deleted = await db.mark_missing(student.key, "exams", {e.id for e in exams})
             if deleted:
                 logger.info("Soft-deleted %d exams for %s", deleted, student.name)
-    except Exception:
-        logger.exception("Failed to sync exams for %s", student.name)
+        await section_ok("exams", len(exams))
+    except Exception as exc:
+        await section_failed("exams", exc)
 
     # ── Homework ─────────────────────────────────────────────────
     try:
@@ -202,8 +231,9 @@ async def sync_student(
             deleted = await db.mark_missing(student.key, "homework", {h.id for h in homework})
             if deleted:
                 logger.info("Soft-deleted %d homework for %s", deleted, student.name)
-    except Exception:
-        logger.exception("Failed to sync homework for %s", student.name)
+        await section_ok("homework", len(homework))
+    except Exception as exc:
+        await section_failed("homework", exc)
 
     # ── Schedule / Substitutions ─────────────────────────────────
     try:
@@ -231,13 +261,16 @@ async def sync_student(
 
         for lesson in lessons:
             await db.upsert_lesson(student.key, lesson)
-    except Exception:
-        logger.exception("Failed to sync schedule for %s", student.name)
+        await section_ok("schedule", len(lessons))
+    except Exception as exc:
+        await section_failed("schedule", exc)
 
     # Commit all entity upserts in one transaction
     await db.commit()
 
-    # Mark sync complete
+    # Mark sync attempted. This is the "have we ever seen this student" flag that
+    # drives is_first_sync -- deliberately NOT a freshness signal. Freshness lives in
+    # last_success:<student>:<section>, which only advances on a confirmed fetch.
     await db.set_state(
         f"last_sync:{student.key}",
         datetime.now().isoformat(),
@@ -250,17 +283,25 @@ async def sync_student(
 async def sync_messages(
     client: VulcanClient,
     db: Database,
-) -> tuple[list[Message], bool]:
-    """Sync messages (unified inbox). Returns (new_messages, is_first_sync)."""
+    run_id: int | None = None,
+) -> tuple[list[Message], bool, str | None]:
+    """Sync messages (unified inbox).
+
+    Returns (new_messages, is_first_sync, failure_detail). failure_detail is None on
+    success; when set, the caller marks the run degraded.
+    """
 
     last_msg_sync = await db.get_state("last_sync:messages")
     is_first = last_msg_sync is None
 
     try:
         messages = await client.get_messages(page_size=50)
-    except Exception:
+    except Exception as exc:
+        detail = f"{type(exc).__name__}: {exc}"[:500]
         logger.exception("Failed to fetch messages")
-        return [], is_first
+        if run_id is not None:
+            await db.record_section(run_id, "messages", "failed", error_detail=detail)
+        return [], is_first, detail
 
     known_ids = await db.get_message_ids()
     new_messages: list[Message] = []
@@ -298,7 +339,10 @@ async def sync_messages(
     await db.set_state("last_sync:messages", datetime.now().isoformat())
     await db.commit()
 
-    return new_messages, is_first
+    if run_id is not None:
+        await db.record_section(run_id, "messages", "ok", item_count=len(messages))
+
+    return new_messages, is_first, None
 
 
 async def sync_all(
@@ -306,6 +350,13 @@ async def sync_all(
     db: Database,
 ) -> FullSyncResult:
     """Sync all students and messages. Returns combined result."""
+    # Clean up rows abandoned by a killed sync before opening a new one, so a
+    # crash-looping container doesn't accumulate phantom 'running' rows.
+    interrupted = await db.reconcile_stale_runs()
+    if interrupted:
+        logger.warning("Marked %d abandoned sync run(s) as interrupted", interrupted)
+    await db.prune_sync_runs(keep_days=settings.sync_history_keep_days)
+
     run_id = await db.create_sync_run()
     errors = 0
     items = 0
@@ -313,8 +364,12 @@ async def sync_all(
     try:
         students = await client.get_students()
         if not students:
-            logger.warning("No students found in account")
-            await db.complete_sync_run(run_id, "completed", 0, 0, 0)
+            # The roster is never legitimately empty for this account; an empty one
+            # means the Context response changed shape or the profile is suspended.
+            logger.error("No students found in account - treating as a failed sync")
+            await db.complete_sync_run(
+                run_id, "failed", 0, 0, 1, "roster empty: no active students returned"
+            )
             return FullSyncResult(student_results=[])
 
         # Vulcan's current roster is the source of truth for which keys are live.
@@ -325,18 +380,33 @@ async def sync_all(
             await db.commit()
 
         student_results: list[SyncResult] = []
+        failures: list[str] = []
         for student in students:
             logger.info("Syncing %s (%s)...", student.name, student.class_name)
-            result = await sync_student(client, db, student)
+            result = await sync_student(client, db, student, run_id=run_id)
             student_results.append(result)
             items += len(result.all_changes)
+            for section, section_error in result.failed_sections.items():
+                errors += 1
+                failures.append(f"{student.name}/{section}: {section_error}")
 
         # Sync messages (unified inbox, once for all students)
         logger.info("Syncing messages...")
-        new_messages, is_first_msg = await sync_messages(client, db)
+        new_messages, is_first_msg, msg_failure = await sync_messages(client, db, run_id=run_id)
         items += len(new_messages)
+        if msg_failure:
+            errors += 1
+            failures.append(f"messages: {msg_failure}")
 
-        await db.complete_sync_run(run_id, "completed", len(students), items, errors)
+        # 'completed' must mean every section came back. A run where the scraper
+        # fetched nothing used to land here as completed/errors_count=0, which is
+        # exactly what made an outage look like a quiet week.
+        status = "degraded" if failures else "completed"
+        detail = "; ".join(failures)[:2000] if failures else None
+        if failures:
+            logger.error("Sync degraded: %d section failure(s): %s", errors, detail)
+
+        await db.complete_sync_run(run_id, status, len(students), items, errors, detail)
 
         return FullSyncResult(
             student_results=student_results,
