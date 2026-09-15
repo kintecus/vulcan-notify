@@ -23,6 +23,7 @@ def _settings(tmp_path: Path, *, api_key: str | None = "test-key") -> Settings:
     )
     return Settings(
         llm_api_key=api_key,
+        llm_model="gpt-oss-120b",
         prompts_file=prompts,
         db_path=tmp_path / "test.db",
         session_file=tmp_path / "session.json",
@@ -55,7 +56,7 @@ async def test_calls_openai_with_correct_params(
         api_key="test-key",
     )
     call_kwargs = mock_client.chat.completions.create.call_args.kwargs
-    assert call_kwargs["model"] == "llama3.1-8b"
+    assert call_kwargs["model"] == "gpt-oss-120b"
     messages = call_kwargs["messages"]
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == "You summarize school updates."

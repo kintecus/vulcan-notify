@@ -207,7 +207,7 @@ All settings are via environment variables or `.env` file:
 | `NTFY_SERVER` | `https://ntfy.sh` | ntfy server base URL |
 | `LLM_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible API base URL for AI summaries |
 | `LLM_API_KEY` | (none) | API key for AI summaries (disabled if unset) |
-| `LLM_MODEL` | `qwen-3-235b-a22b-instruct-2507` | Model name for AI summaries |
+| `LLM_MODEL` | `gpt-oss-120b` | Model name for AI summaries |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ## 📚 Documentation <a name="documentation"></a>
