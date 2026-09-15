@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
+from aiohttp.test_utils import make_mocked_request
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -499,6 +501,35 @@ async def test_subject_averages_skips_diagnostics(seeded_diag_db: Path) -> None:
     # Only the 4 and 5 count -> avg 4.5, count 2
     assert math["count"] == 2
     assert math["average"] == 4.5
+
+
+@pytest.mark.parametrize(
+    ("status", "query", "expected"),
+    [
+        ("ok", "", 200),
+        ("degraded", "", 200),
+        ("stale", "", 503),
+        ("failed", "", 503),
+        # ?soft=1 is the variant HA reads. Its REST sensor discards the body on
+        # any non-2xx, which would blind the dashboard at exactly the moment the
+        # payload starts being worth reading.
+        ("stale", "soft=1", 200),
+        ("failed", "soft=true", 200),
+        ("stale", "soft=0", 503),
+    ],
+)
+async def test_health_status_code(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    query: str,
+    expected: int,
+) -> None:
+    monkeypatch.setattr(api_mod, "_get_health", lambda: {"status": status})
+    path = f"/api/health?{query}" if query else "/api/health"
+    response = await api_mod.handle_health(make_mocked_request("GET", path))
+    assert response.status == expected
+    # The body is identical either way; only the status code differs.
+    assert json.loads(response.text)["status"] == status
 
 
 def test_month_list_year_mode() -> None:
