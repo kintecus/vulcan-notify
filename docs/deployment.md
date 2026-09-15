@@ -94,11 +94,11 @@ curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up --hostname tools
 ```
 
-The LXC is now reachable at `tools.dwelf-forel.ts.net`. Set up SSH key auth:
+LXC 103 is **not** a tailnet node, so it is reached through the PVE host with `pct exec`. The old `tools.dwelf-forel.ts.net` name never resolved. Set up SSH key auth to the PVE host:
 
 ```bash
 # From your Mac
-ssh-copy-id root@tools.dwelf-forel.ts.net
+ssh-copy-id root@pve.dwelf-forel.ts.net
 ```
 
 ## 5. GitHub deploy key
@@ -172,10 +172,10 @@ This SSHs to the tools LXC and runs pull + rebuild. Override the host with `TOOL
 journalctl -u vulcan-deploy --no-pager -n 50
 
 # Container status
-ssh root@tools.dwelf-forel.ts.net "cd /opt/vulcan-notify && docker compose ps"
+ssh root@pve.dwelf-forel.ts.net "pct exec 103 -- sh -lc 'cd /opt/vulcan-notify && docker compose ps'"
 
 # Recent sync logs
-ssh root@tools.dwelf-forel.ts.net "cd /opt/vulcan-notify && docker compose logs --tail 30"
+ssh root@pve.dwelf-forel.ts.net "pct exec 103 -- sh -lc 'cd /opt/vulcan-notify && docker compose logs --tail 30'"
 ```
 
 ## 9. DNS fix for LXC
