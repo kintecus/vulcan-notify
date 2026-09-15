@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
@@ -179,7 +180,27 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     errors_count INTEGER DEFAULT 0,
     error_detail TEXT
 );
+
+-- Per-section outcome for each run. Without this a run is a single pass/fail and
+-- a partial failure (grades broken, everything else fine) is invisible.
+CREATE TABLE IF NOT EXISTS sync_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    student_key TEXT NOT NULL DEFAULT '',
+    section TEXT NOT NULL,
+    status TEXT NOT NULL,
+    item_count INTEGER DEFAULT 0,
+    error_detail TEXT,
+    finished_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_sections_run ON sync_sections(run_id);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_started ON sync_runs(started_at);
 """
+
+# Data sections a sync covers. Health is reported per section so a partial
+# outage names the broken part instead of just going red.
+SECTIONS = ("grades", "attendance", "exams", "homework", "schedule", "messages")
 
 
 class Database:
@@ -899,6 +920,12 @@ class Database:
         """Mark items not in current_ids as soft-deleted. Returns count."""
         if table not in ("exams", "homework"):
             raise ValueError(f"Soft deletes not supported for table: {table}")
+        # LOAD-BEARING. An empty current_ids means "the fetch told us nothing", which
+        # back when a failed fetch returned [] was indistinguishable from "everything
+        # was cancelled". Without this guard a single Vulcan 500 soft-deletes every
+        # exam and homework row and fires the matching calendar deletions.
+        # Fetch failures now raise VulcanFetchError before reaching here, but keep the
+        # guard: it is the last line of defence and costs nothing.
         if not current_ids:
             return 0
         placeholders = ",".join("?" for _ in current_ids)
@@ -1049,4 +1076,133 @@ class Database:
             "items_processed": row[5],
             "errors_count": row[6],
             "error_detail": row[7],
+        }
+
+    async def record_section(
+        self,
+        run_id: int,
+        section: str,
+        status: str,
+        *,
+        student_key: str = "",
+        item_count: int = 0,
+        error_detail: str | None = None,
+    ) -> None:
+        """Record the outcome of one section of one student's sync.
+
+        On success this also stamps `last_success:<student>:<section>` in sync_state,
+        which is what freshness is computed from. That stamp advances ONLY here, so a
+        section that failed cannot look fresh.
+        """
+        await self.db.execute(
+            "INSERT INTO sync_sections "
+            "(run_id, student_key, section, status, item_count, error_detail) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (run_id, student_key, section, status, item_count, error_detail),
+        )
+        if status == "ok":
+            await self.set_state(
+                f"last_success:{student_key}:{section}",
+                datetime.now().isoformat(),
+            )
+        await self.commit()
+
+    async def reconcile_stale_runs(self, older_than_seconds: int = 3600) -> int:
+        """Mark abandoned 'running' rows as interrupted. Returns the count.
+
+        A sync killed mid-flight (OOM, container stop, host reboot) leaves its row
+        as 'running' forever. Two such rows sat unnoticed from April and May 2026.
+        """
+        # Compare against SQLite's own clock. started_at is written with
+        # CURRENT_TIMESTAMP, which is UTC; datetime.now() is local, and mixing the two
+        # marked every in-flight run as interrupted east of Greenwich.
+        cursor = await self.db.execute(
+            "UPDATE sync_runs SET status = 'interrupted', "
+            "error_detail = COALESCE(error_detail, 'abandoned mid-run') "
+            "WHERE status = 'running' AND started_at < datetime('now', ?)",
+            (f"-{older_than_seconds} seconds",),
+        )
+        await self.commit()
+        return cursor.rowcount
+
+    async def prune_sync_runs(self, keep_days: int = 90) -> int:
+        """Drop sync history older than keep_days. Returns rows deleted."""
+        offset = f"-{keep_days} days"
+        await self.db.execute(
+            "DELETE FROM sync_sections WHERE run_id IN "
+            "(SELECT id FROM sync_runs WHERE started_at < datetime('now', ?))",
+            (offset,),
+        )
+        cursor = await self.db.execute(
+            "DELETE FROM sync_runs WHERE started_at < datetime('now', ?)", (offset,)
+        )
+        await self.commit()
+        return cursor.rowcount
+
+    async def get_health(self, stale_after_seconds: int = 3600) -> dict[str, Any]:
+        """Aggregate freshness across sections into a single health document.
+
+        This is the source of truth behind /api/health and the `_meta` block on every
+        data endpoint. It answers "when did this data last come back from Vulcan for
+        real", which is a different question from "did the loop run".
+        """
+        now = datetime.now()
+        last_run = await self.get_last_sync_run()
+
+        cursor = await self.db.execute("SELECT key FROM students WHERE active = 1")
+        active_keys = [r[0] for r in await cursor.fetchall()]
+
+        cursor = await self.db.execute(
+            "SELECT key, value FROM sync_state WHERE key LIKE 'last_success:%'"
+        )
+        stamps = {r[0]: r[1] for r in await cursor.fetchall()}
+
+        def age_of(raw: str | None) -> float | None:
+            if not raw:
+                return None
+            try:
+                return (now - datetime.fromisoformat(raw)).total_seconds()
+            except ValueError:
+                return None
+
+        sections: dict[str, Any] = {}
+        for section in SECTIONS:
+            # Messages are account-wide, everything else is per student. A section is
+            # only as fresh as its stalest active student.
+            keys = [""] if section == "messages" else active_keys
+            ages = [age_of(stamps.get(f"last_success:{k}:{section}")) for k in keys] or [None]
+            if any(a is None for a in ages):
+                age: float | None = None
+            else:
+                age = max(a for a in ages if a is not None)
+            sections[section] = {
+                "age_seconds": None if age is None else int(age),
+                "stale": True if age is None else age > stale_after_seconds,
+            }
+
+        stale = [name for name, s in sections.items() if s["stale"]]
+        run_status = str(last_run["status"]) if last_run else "unknown"
+
+        if not last_run or len(stale) == len(SECTIONS):
+            status = "failed"
+        elif stale:
+            status = "stale"
+        elif run_status in ("degraded", "failed", "interrupted"):
+            status = "degraded"
+        else:
+            status = "ok"
+
+        fresh_ages = [
+            s["age_seconds"] for s in sections.values() if s["age_seconds"] is not None
+        ]
+
+        return {
+            "status": status,
+            "stale": status in ("stale", "failed"),
+            "stale_sections": stale,
+            "age_seconds": max(fresh_ages) if fresh_ages else None,
+            "stale_after_seconds": stale_after_seconds,
+            "sections": sections,
+            "last_run": last_run,
+            "generated_at": now.isoformat(),
         }

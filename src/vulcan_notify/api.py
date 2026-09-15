@@ -5,7 +5,8 @@ from __future__ import annotations
 import calendar
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aiohttp import web
@@ -19,6 +20,146 @@ def _connect() -> sqlite3.Connection:
     db = sqlite3.connect(str(settings.db_path))
     db.row_factory = sqlite3.Row
     return db
+
+
+# Data sections tracked for freshness. Mirrors db.SECTIONS; duplicated rather than
+# imported because this module talks to SQLite synchronously and deliberately does
+# not pull in the aiosqlite Database class.
+_SECTIONS = ("grades", "attendance", "exams", "homework", "schedule", "messages")
+
+
+def _get_health() -> dict[str, Any]:
+    """Compute the freshness picture from sync_runs + sync_state.
+
+    Freshness comes from `last_success:<student>:<section>` keys, which sync.py only
+    writes after a confirmed fetch. It is deliberately not derived from "did the loop
+    run" -- the loop running while every fetch returns nothing is the failure this
+    whole endpoint exists to catch.
+    """
+    now = datetime.now()
+    stale_after = settings.stale_after_seconds
+
+    try:
+        db = _connect()
+    except sqlite3.Error as exc:
+        return {
+            "status": "failed",
+            "stale": True,
+            "error": f"cannot open database: {exc}",
+            "generated_at": now.isoformat(),
+        }
+
+    try:
+        row = db.execute(
+            "SELECT id, started_at, completed_at, status, students_synced, "
+            "items_processed, errors_count, error_detail "
+            "FROM sync_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        last_run = dict(row) if row else None
+
+        active_keys = [r[0] for r in db.execute("SELECT key FROM students WHERE active = 1")]
+        stamps = {
+            r[0]: r[1]
+            for r in db.execute("SELECT key, value FROM sync_state WHERE key LIKE 'last_success:%'")
+        }
+    finally:
+        db.close()
+
+    def age_of(raw: str | None) -> float | None:
+        if not raw:
+            return None
+        try:
+            return (now - datetime.fromisoformat(raw)).total_seconds()
+        except ValueError:
+            return None
+
+    sections: dict[str, Any] = {}
+    for section in _SECTIONS:
+        # Messages are account-wide; everything else is per student. A section is
+        # only as fresh as its stalest active student.
+        keys = [""] if section == "messages" else active_keys
+        ages = [age_of(stamps.get(f"last_success:{k}:{section}")) for k in keys] or [None]
+        age = None if any(a is None for a in ages) else max(a for a in ages if a is not None)
+        sections[section] = {
+            "age_seconds": None if age is None else int(age),
+            "stale": True if age is None else age > stale_after,
+        }
+
+    stale = [name for name, s in sections.items() if s["stale"]]
+    run_status = str(last_run["status"]) if last_run else "unknown"
+
+    if not last_run or len(stale) == len(_SECTIONS):
+        status = "failed"
+    elif stale:
+        status = "stale"
+    elif run_status in ("degraded", "failed", "interrupted"):
+        status = "degraded"
+    else:
+        status = "ok"
+
+    known_ages: list[int] = [
+        s["age_seconds"] for s in sections.values() if s["age_seconds"] is not None
+    ]
+
+    return {
+        "status": status,
+        "stale": status in ("stale", "failed"),
+        "stale_sections": stale,
+        "age_seconds": max(known_ages) if known_ages else None,
+        "stale_after_seconds": stale_after,
+        "sections": sections,
+        "last_run": last_run,
+        "generated_at": now.isoformat(),
+    }
+
+
+def _meta(*sections: str) -> dict[str, Any]:
+    """Provenance block attached to every data response.
+
+    Added as a top-level `_meta` key rather than wrapping the payload in an envelope:
+    every Home Assistant REST sensor scopes `json_attributes_path` to a student key,
+    so an extra sibling key is invisible to them and no HA config had to change.
+    """
+    health = _get_health()
+    relevant = {s: health.get("sections", {}).get(s) for s in sections if s in _SECTIONS}
+    stale = any(v and v["stale"] for v in relevant.values()) if relevant else health["stale"]
+    ages = [v["age_seconds"] for v in relevant.values() if v and v["age_seconds"] is not None]
+
+    return {
+        "status": health["status"],
+        "stale": stale,
+        "age_seconds": max(ages) if ages else health.get("age_seconds"),
+        "sections": relevant,
+        "generated_at": health["generated_at"],
+    }
+
+
+Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
+
+
+@web.middleware
+async def error_middleware(request: web.Request, handler: Handler) -> web.StreamResponse:
+    """Turn unhandled faults into structured responses.
+
+    Query params are parsed with bare int(), so `?n=abc` used to surface as a 500 with
+    a traceback. A locked or missing database did the same. Neither is distinguishable
+    from a server bug by anything upstream.
+    """
+    try:
+        return await handler(request)
+    except web.HTTPException:
+        raise
+    except ValueError as exc:
+        return web.json_response({"error": "bad request", "detail": str(exc)}, status=400)
+    except sqlite3.Error as exc:
+        logger.exception("Database error serving %s", request.path)
+        return web.json_response(
+            {"error": "database unavailable", "detail": str(exc)}, status=503
+        )
+    except Exception as exc:
+        # Last resort: a handler bug must produce a structured 500, not a raw traceback.
+        logger.exception("Unhandled error serving %s", request.path)
+        return web.json_response({"error": "internal error", "detail": str(exc)}, status=500)
 
 
 def _date_minus_days(iso_date: str, days: int) -> str:
@@ -554,7 +695,7 @@ async def handle_grades_average(request: web.Request) -> web.Response:
     student = request.query.get("student")
     window = int(request.query.get("window", "30"))
     period = request.query.get("period")
-    return web.json_response(_get_grade_averages(student, window, period))
+    return _with_meta(_get_grade_averages(student, window, period), "grades")
 
 
 async def handle_grades_monthly(request: web.Request) -> web.Response:
@@ -562,7 +703,7 @@ async def handle_grades_monthly(request: web.Request) -> web.Response:
     year_q = request.query.get("year")
     year = int(year_q) if year_q else None
     months = int(request.query.get("months", "6"))
-    return web.json_response(_get_monthly_averages(student, year, months))
+    return _with_meta(_get_monthly_averages(student, year, months), "grades")
 
 
 def _get_lessons_for_ics(
@@ -594,7 +735,8 @@ def _get_lessons_for_ics(
     placeholders = ",".join("?" * len(keys))
     rows = db.execute(
         "SELECT student_key, date, time_from, time_to, subject, teacher, room, group_name, "
-        "annotation, is_extra, sub_teacher, sub_room, sub_type, absence_info, remarks "
+        "annotation, is_extra, sub_teacher, sub_room, sub_type, absence_info, remarks, "
+        "first_seen, last_seen "
         f"FROM schedule WHERE student_key IN ({placeholders}) AND date >= ? AND date <= ? "
         "ORDER BY date ASC, time_from ASC",
         (*keys, date_from, date_to),
@@ -618,6 +760,10 @@ def _get_lessons_for_ics(
             "sub_type": r["sub_type"],
             "absence_info": r["absence_info"],
             "remarks": r["remarks"],
+            # Carried through so each VEVENT gets a DTSTAMP reflecting when the
+            # lesson last changed rather than when the feed was served.
+            "first_seen": r["first_seen"],
+            "last_seen": r["last_seen"],
         }
         for r in rows
     ]
@@ -637,7 +783,15 @@ async def handle_calendar(request: web.Request) -> web.Response:
     if not key:
         return web.Response(status=404, text=f"Unknown student: {student_name}")
 
-    body = build_calendar(student_name, lessons, key)
+    # A frozen feed has to announce itself in the calendar; see ics._stale_event.
+    schedule_health = _get_health().get("sections", {}).get("schedule", {})
+    is_stale = bool(schedule_health.get("stale"))
+    age = schedule_health.get("age_seconds")
+    stale_since = datetime.now(UTC) - timedelta(seconds=age) if age is not None else None
+
+    body = build_calendar(
+        student_name, lessons, key, stale=is_stale, stale_since=stale_since
+    )
     return web.Response(
         body=body.encode("utf-8"),
         content_type="text/calendar",
@@ -649,52 +803,75 @@ async def handle_calendar(request: web.Request) -> web.Response:
     )
 
 
+def _with_meta(payload: dict[str, Any], *sections: str) -> web.Response:
+    """Attach provenance and reply. `_meta` sorts before student names on purpose."""
+    return web.json_response({"_meta": _meta(*sections), **payload})
+
+
 async def handle_schedule(request: web.Request) -> web.Response:
     student = request.query.get("student")
     only_subs = request.query.get("only_substitutions", "").lower() in ("1", "true", "yes")
     days = int(request.query.get("days", "14"))
-    return web.json_response(_get_schedule(student, only_subs, days))
+    return _with_meta(_get_schedule(student, only_subs, days), "schedule")
 
 
 async def handle_grades_by_subject(request: web.Request) -> web.Response:
     student = request.query.get("student")
     period = request.query.get("period")
-    return web.json_response(_get_subject_averages(student, period))
+    return _with_meta(_get_subject_averages(student, period), "grades")
 
 
 async def handle_grades_summary(request: web.Request) -> web.Response:
     student = request.query.get("student")
     period = request.query.get("period")
-    return web.json_response(_get_subject_summaries(student, period))
+    return _with_meta(_get_subject_summaries(student, period), "grades")
 
 
 async def handle_grades(request: web.Request) -> web.Response:
     n = int(request.query.get("n", "5"))
-    return web.json_response(_get_grades(n))
+    return _with_meta(_get_grades(n), "grades")
 
 
 async def handle_homework(request: web.Request) -> web.Response:
     n = int(request.query.get("n", "5"))
-    return web.json_response(_get_homework(n))
+    return _with_meta(_get_homework(n), "homework")
 
 
 async def handle_messages(request: web.Request) -> web.Response:
     n = int(request.query.get("n", "20"))
-    return web.json_response({"messages": _get_messages(n)})
+    return _with_meta({"messages": _get_messages(n)}, "messages")
 
 
 async def handle_exams(request: web.Request) -> web.Response:
     student = request.query.get("student")
     days = int(request.query.get("days", "21"))
-    return web.json_response(_get_exams(student, days))
+    return _with_meta(_get_exams(student, days), "exams")
+
+
+async def handle_alive(request: web.Request) -> web.Response:
+    """Pure liveness: is this process serving HTTP at all?
+
+    Kept separate from /api/health so the Docker healthcheck doesn't mark the
+    container unhealthy just because Vulcan upstream is down.
+    """
+    return web.json_response({"alive": True})
 
 
 async def handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok"})
+    """Report whether the data behind this API is actually current.
+
+    Returns 503 when stale or failed so that dumb HTTP probes -- the Docker
+    healthcheck and pve-healthcheck on the PVE host -- can detect a frozen
+    pipeline without understanding the payload. This endpoint used to be a static
+    {"status": "ok"} literal, which meant every watchdog above it was decorative.
+    """
+    health = _get_health()
+    code = 503 if health["status"] in ("stale", "failed") else 200
+    return web.json_response(health, status=code)
 
 
 def create_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[error_middleware])
     app.router.add_get("/api/grades/average", handle_grades_average)
     app.router.add_get("/api/grades/monthly", handle_grades_monthly)
     app.router.add_get("/api/grades/by-subject", handle_grades_by_subject)
@@ -706,13 +883,23 @@ def create_app() -> web.Application:
     app.router.add_get("/api/messages", handle_messages)
     app.router.add_get("/api/exams", handle_exams)
     app.router.add_get("/api/health", handle_health)
+    app.router.add_get("/api/alive", handle_alive)
     return app
 
 
-def run_api(port: int = 8585) -> None:
+def run_api(port: int = 8585, access_log: bool = False) -> None:
     app = create_app()
     logger.info("Starting API server on port %d", port)
-    web.run_app(app, host="0.0.0.0", port=port, print=None)
+    # Access logging is off by default. HA polls 8 resources every 5 minutes against a
+    # sync that runs every 30, so access records were ~99% of the container log and
+    # buried every real error. Set API_ACCESS_LOG=1 to get them back for debugging.
+    web.run_app(
+        app,
+        host="0.0.0.0",
+        port=port,
+        print=None,
+        access_log=logging.getLogger("aiohttp.access") if access_log else None,
+    )
 
 
 if __name__ == "__main__":
@@ -723,4 +910,7 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    run_api(port=int(os.environ.get("API_PORT", "8585")))
+    run_api(
+        port=int(os.environ.get("API_PORT", "8585")),
+        access_log=os.environ.get("API_ACCESS_LOG", "").lower() in ("1", "true", "yes"),
+    )
