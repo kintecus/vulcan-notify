@@ -28,3 +28,31 @@ if [ -n "$PLANTUML_STAGED_MD" ]; then
     fi
 fi
 # <<< tribe-coding/plantuml <<<
+
+# >>> tribe-coding/mermaid >>>
+# Mermaid syntax validation — installed by mermaid Claude Code plugin.
+# Do not edit between markers; managed automatically by setup-project.sh.
+MERMAID_STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM -- '*.md')
+
+if [ -n "$MERMAID_STAGED_MD" ]; then
+    MERMAID_VALIDATOR=""
+    for candidate in \
+        "$HOME/.claude/plugins/cache/tribe-coding/mermaid/scripts/validate-mermaid.py" \
+        "$HOME/.claude/plugins/marketplaces/tribe-coding/plugins/mermaid/scripts/validate-mermaid.py" \
+        "$(git rev-parse --show-toplevel 2>/dev/null)/scripts/validate-mermaid.py"; do
+        if [ -f "$candidate" ]; then
+            MERMAID_VALIDATOR="$candidate"
+            break
+        fi
+    done
+
+    if [ -n "$MERMAID_VALIDATOR" ]; then
+        if ! python3 "$MERMAID_VALIDATOR" $MERMAID_STAGED_MD; then
+            echo ""
+            echo "Commit blocked: Mermaid diagrams have syntax errors."
+            echo "  Fix the errors reported above, or set MERMAID_KROKI_URL if Kroki is unreachable."
+            exit 1
+        fi
+    fi
+fi
+# <<< tribe-coding/mermaid <<<
