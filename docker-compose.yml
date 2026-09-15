@@ -1,13 +1,41 @@
+# Two services off one image. They used to be one container where entrypoint.sh
+# forked the API into the background: if the API died, bash (PID 1) survived, so
+# `restart: unless-stopped` never fired and port 8585 stayed dead indefinitely.
+# Split apart, each process is supervised on its own.
+x-common: &common
+  build: .
+  restart: unless-stopped
+  env_file: .env
+  volumes:
+    - ./data:/app/data
+  environment:
+    - DB_PATH=/app/data/vulcan_notify.db
+    - SESSION_FILE=/app/data/session.json
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
-  vulcan-notify:
-    container_name: vulcan-notify
-    build: .
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./data:/app/data
+  vulcan-api:
+    <<: *common
+    container_name: vulcan-api
+    command: ["uv", "run", "python", "-m", "vulcan_notify.api"]
     ports:
       - "8585:8585"
-    environment:
-      - DB_PATH=/app/data/vulcan_notify.db
-      - SESSION_FILE=/app/data/session.json
+    healthcheck:
+      # Deliberately /api/alive, not /api/health. Liveness and freshness are
+      # different questions: when Vulcan is down the data is stale but this
+      # container is fine, and marking it unhealthy would be a lie. Freshness is
+      # pve-healthcheck's job, via /api/health's 503.
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8585/api/alive', timeout=5)\""]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  vulcan-sync:
+    <<: *common
+    container_name: vulcan-sync
+    command: ["./sync-loop.sh"]

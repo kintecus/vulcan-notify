@@ -327,28 +327,38 @@ async def test_session(session_data: dict[str, Any]) -> bool:
         "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
     }
 
-    async with (
-        aiohttp.ClientSession() as session,
-        session.get(url, ssl=ssl_ctx, headers=headers) as resp,
-    ):
-        text = await resp.text()
-        content_type = resp.headers.get("content-type", "")
+    timeout = aiohttp.ClientTimeout(total=30, connect=10)
 
-        logger.debug("Session test: status=%d content-type=%s len=%d", resp.status, content_type, len(text))
+    try:
+        async with (
+            aiohttp.ClientSession(timeout=timeout) as session,
+            session.get(url, ssl=ssl_ctx, headers=headers) as resp,
+        ):
+            text = await resp.text()
+            content_type = resp.headers.get("content-type", "")
+            status = resp.status
+    except (TimeoutError, aiohttp.ClientError) as exc:
+        # A DNS blip or reset here used to escape as an uncaught traceback and kill
+        # the whole cycle. Treat it as "can't confirm the session" and let the caller
+        # re-auth; a genuinely dead network will fail again louder downstream.
+        logger.warning("Session test failed to reach %s: %s", url, exc)
+        return False
 
-        if resp.status != 200:
-            logger.warning("Session invalid: status %d", resp.status)
-            return False
+    logger.debug("Session test: status=%d content-type=%s len=%d", status, content_type, len(text))
 
-        # If we got HTML back, the session is expired (redirect to login)
-        if "text/html" in content_type:
-            logger.info("Session expired (got HTML instead of JSON)")
-            return False
+    if status != 200:
+        logger.warning("Session invalid: status %d", status)
+        return False
 
-        try:
-            json.loads(text)
-            logger.debug("Session valid")
-            return True
-        except json.JSONDecodeError:
-            logger.warning("Unexpected response: %s", text[:300])
-            return False
+    # If we got HTML back, the session is expired (redirect to login)
+    if "text/html" in content_type:
+        logger.info("Session expired (got HTML instead of JSON)")
+        return False
+
+    try:
+        json.loads(text)
+        logger.debug("Session valid")
+        return True
+    except json.JSONDecodeError:
+        logger.warning("Unexpected response: %s", text[:300])
+        return False

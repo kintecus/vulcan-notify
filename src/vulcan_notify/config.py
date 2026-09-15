@@ -23,9 +23,15 @@ class Settings(BaseSettings):
     # Sync
     sync_attendance_days: int = 90  # how far back to sync attendance
     sync_message_backfill_batch: int = 10  # messages to backfill per cycle
+    sync_history_keep_days: int = 90  # sync_runs / sync_sections retention
 
-    # Polling
-    poll_interval: int = 300  # seconds
+    # Polling. sync-loop.sh reads POLL_INTERVAL from the environment, so this is the
+    # single source of truth for both the loop and the staleness threshold below.
+    poll_interval: int = 1800  # seconds
+
+    # Data older than this is reported stale by /api/health and the `_meta` block.
+    # Two missed cycles: one late sync is normal, two means something is wrong.
+    stale_after_seconds: int = 3600
 
     # Storage
     db_path: Path = Path("vulcan_notify.db")
@@ -36,7 +42,7 @@ class Settings(BaseSettings):
     # LLM (optional - all providers use OpenAI-compatible API)
     llm_base_url: str = "https://api.cerebras.ai/v1"
     llm_api_key: str | None = None
-    llm_model: str = "qwen-3-235b-a22b-instruct-2507"
+    llm_model: str = "gpt-oss-120b"
     prompts_file: Path = Path("prompts.toml")
 
     # Calendar (macOS Calendar via AppleScript, empty map = disabled)

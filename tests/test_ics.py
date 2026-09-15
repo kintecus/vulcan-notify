@@ -92,3 +92,67 @@ def test_build_calendar_empty() -> None:
     assert "BEGIN:VCALENDAR" in ics
     assert "END:VCALENDAR" in ics
     assert "BEGIN:VEVENT" not in ics
+
+
+def _lesson(**over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "student_key": "S1",
+        "date": "2026-04-15",
+        "time_from": "2026-04-15T08:55:00+02:00",
+        "time_to": "2026-04-15T09:40:00+02:00",
+        "subject": "Matematyka",
+        "teacher": "Nowak",
+        "last_seen": "2026-04-15 07:00:00",
+    }
+    base.update(over)
+    return base
+
+
+def test_dtstamp_comes_from_last_seen_not_now() -> None:
+    """A per-request DTSTAMP makes every poll look like every event changed."""
+    ics = build_calendar("Solomiia", [_lesson()], "S1")
+    assert "DTSTAMP:20260415T070000Z" in ics
+    assert "LAST-MODIFIED:20260415T070000Z" in ics
+
+
+def test_dtstamp_is_stable_across_builds() -> None:
+    first = build_calendar("Solomiia", [_lesson()], "S1")
+    second = build_calendar("Solomiia", [_lesson()], "S1")
+    assert first == second
+
+
+def test_refresh_hints_present() -> None:
+    ics = build_calendar("Solomiia", [], "S1")
+    assert "X-PUBLISHED-TTL:PT1H" in ics
+    assert "REFRESH-INTERVAL;VALUE=DURATION:PT1H" in ics
+
+
+def test_malformed_lesson_is_skipped_not_fatal() -> None:
+    """One bad row used to 500 the whole feed, taking every other lesson with it."""
+    lessons = [_lesson(), _lesson(time_from="not-a-date", subject="Broken")]
+    ics = build_calendar("Solomiia", lessons, "S1")
+
+    assert ics.count("BEGIN:VEVENT") == 1
+    assert "Broken" not in ics
+    assert "Matematyka" in ics
+
+
+def test_stale_feed_announces_itself() -> None:
+    from datetime import UTC, datetime
+
+    since = datetime(2026, 4, 10, 6, 30, tzinfo=UTC)
+    ics = build_calendar("Solomiia", [_lesson()], "S1", stale=True, stale_since=since)
+
+    assert "School sync stale since 2026-04-10 06:30" in ics
+    assert ics.count("BEGIN:VEVENT") == 2
+
+
+def test_stale_without_a_known_since_says_so() -> None:
+    ics = build_calendar("Solomiia", [], "S1", stale=True, stale_since=None)
+    assert "School sync has not completed" in ics
+
+
+def test_fresh_feed_has_no_warning() -> None:
+    ics = build_calendar("Solomiia", [_lesson()], "S1")
+    assert "stale" not in ics.lower()
+    assert ics.count("BEGIN:VEVENT") == 1

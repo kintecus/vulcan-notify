@@ -30,7 +30,9 @@ RUN uv run playwright install chromium
 # Data directory for persistent state (session.json, vulcan_notify.db)
 RUN mkdir -p /app/data
 
-COPY entrypoint.sh ./
-RUN chmod +x entrypoint.sh
+COPY sync-loop.sh ./
+RUN chmod +x sync-loop.sh
 
-ENTRYPOINT ["./entrypoint.sh"]
+# No ENTRYPOINT: docker-compose.yml supplies the command, because one image now
+# backs two services (vulcan-api and vulcan-sync).
+CMD ["./sync-loop.sh"]

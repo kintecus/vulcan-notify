@@ -48,9 +48,37 @@ _BROWSER_HEADERS = {
 _MIN_DELAY = 0.3
 _MAX_DELAY = 1.5
 
+# Bounded retry for transient upstream faults
+_MAX_ATTEMPTS = 3
+_BACKOFF_BASE = 2.0
+
+# Per-request ceiling. Without this aiohttp applies its 5-minute default, which is
+# how a single cycle wedges the whole poll loop.
+_TIMEOUT = aiohttp.ClientTimeout(total=60, connect=15)
+
 
 class SessionExpiredError(Exception):
     """Raised when the session cookies are no longer valid."""
+
+
+class VulcanFetchError(Exception):
+    """Raised when a fetch fails or returns something we cannot parse.
+
+    This exists so that "upstream is broken" is structurally distinct from
+    "the student genuinely has nothing". Collapsing the two into an empty list
+    is what let a Vulcan outage look like a quiet week all the way up to the
+    dashboard.
+    """
+
+    def __init__(self, message: str, *, url: str = "", status: int | None = None) -> None:
+        super().__init__(message)
+        self.url = url
+        self.status = status
+
+
+def _retryable(status: int) -> bool:
+    """5xx and 429 are worth another attempt; 4xx generally are not."""
+    return status >= 500 or status == 429
 
 
 class VulcanClient:
@@ -77,7 +105,7 @@ class VulcanClient:
             headers = {**_BROWSER_HEADERS, "Cookie": self._cookie_header()}
             headers["Referer"] = f"{self._base_url}/App"
             headers["Origin"] = self._base_url
-            self._http = aiohttp.ClientSession(headers=headers)
+            self._http = aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT)
         return self._http
 
     @staticmethod
@@ -89,65 +117,93 @@ class VulcanClient:
         if self._http and not self._http.closed:
             await self._http.close()
 
+    async def _fetch(self, url: str, *, extra_headers: dict[str, str] | None = None) -> Any:
+        """GET a URL and return parsed JSON, retrying transient faults.
+
+        Raises SessionExpiredError when the response is HTML (login redirect) and
+        VulcanFetchError when the request fails for any other reason. It never
+        returns None -- a caller that gets a value back knows the fetch succeeded.
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            await self._jitter()
+            session = await self._ensure_session()
+
+            try:
+                async with session.get(
+                    url, ssl=self._ssl_ctx, headers=extra_headers or {}
+                ) as resp:
+                    content_type = resp.headers.get("content-type", "")
+
+                    if "text/html" in content_type:
+                        # Login redirect. Let the caller re-auth; retrying won't help.
+                        raise SessionExpiredError(
+                            "Session expired. Run 'vulcan-notify auth' to re-authenticate."
+                        )
+
+                    if resp.status != 200:
+                        text = await resp.text()
+                        error = VulcanFetchError(
+                            f"HTTP {resp.status} for {url}: {text[:200]}",
+                            url=url,
+                            status=resp.status,
+                        )
+                        if not _retryable(resp.status) or attempt == _MAX_ATTEMPTS:
+                            raise error
+                        last_error = error
+                        logger.warning(
+                            "HTTP %d for %s (attempt %d/%d), retrying",
+                            resp.status,
+                            url,
+                            attempt,
+                            _MAX_ATTEMPTS,
+                        )
+                    else:
+                        return await resp.json()
+
+            except (TimeoutError, aiohttp.ClientError) as exc:
+                last_error = exc
+                if attempt == _MAX_ATTEMPTS:
+                    raise VulcanFetchError(
+                        f"{type(exc).__name__} for {url}: {exc}", url=url
+                    ) from exc
+                logger.warning(
+                    "%s for %s (attempt %d/%d), retrying",
+                    type(exc).__name__,
+                    url,
+                    attempt,
+                    _MAX_ATTEMPTS,
+                )
+
+            await asyncio.sleep(_BACKOFF_BASE ** (attempt - 1))
+
+        # Unreachable: the final attempt either returns or raises.
+        raise VulcanFetchError(f"exhausted retries for {url}: {last_error}", url=url)
+
     async def _request_url(self, url: str) -> Any:
         """Make a GET request to an absolute URL. Returns parsed JSON.
 
         Builds a per-request Cookie header matching the URL's domain,
         since different subdomains need different cookies.
         """
-        await self._jitter()
-        session = await self._ensure_session()
         cookie_header = "; ".join(
             f"{k}={v}" for k, v in cookies_for_url(self._session_data, url).items()
         )
-
-        async with session.get(
-            url, ssl=self._ssl_ctx, headers={"Cookie": cookie_header, "Referer": url}
-        ) as resp:
-            content_type = resp.headers.get("content-type", "")
-
-            if "text/html" in content_type:
-                raise SessionExpiredError(
-                    "Session expired. Run 'vulcan-notify auth' to re-authenticate."
-                )
-
-            if resp.status != 200:
-                text = await resp.text()
-                logger.warning("API error %d for %s: %s", resp.status, url, text[:200])
-                return None
-
-            return await resp.json()
+        return await self._fetch(url, extra_headers={"Cookie": cookie_header, "Referer": url})
 
     async def _request(self, path: str) -> Any:
-        """Make a GET request to the API. Returns parsed JSON.
-
-        Raises SessionExpiredError if the response is HTML (login redirect).
-        """
-        await self._jitter()
-        session = await self._ensure_session()
-        url = f"{self._base_url}{path}"
-
-        async with session.get(url, ssl=self._ssl_ctx) as resp:
-            content_type = resp.headers.get("content-type", "")
-
-            if "text/html" in content_type:
-                raise SessionExpiredError(
-                    "Session expired. Run 'vulcan-notify auth' to re-authenticate."
-                )
-
-            if resp.status != 200:
-                text = await resp.text()
-                logger.warning("API error %d for %s: %s", resp.status, path, text[:200])
-                return None
-
-            return await resp.json()
+        """Make a GET request to the API. Returns parsed JSON."""
+        return await self._fetch(f"{self._base_url}{path}")
 
     # ── Student context ──────────────────────────────────────────────
 
     async def get_students(self) -> list[Student]:
         data = await self._request("/api/Context")
-        if not data or "uczniowie" not in data:
-            return []
+        # A 200 that doesn't carry the key we expect means the API shape moved under
+        # us (eduVULCAN has redesigned before). That is a failure, not an empty roster.
+        if not isinstance(data, dict) or "uczniowie" not in data:
+            raise VulcanFetchError("/api/Context response has no 'uczniowie' key")
 
         return [
             Student(
@@ -192,8 +248,8 @@ class VulcanClient:
         data = await self._request(
             f"/api/Oceny?key={student.key}&idOkresKlasyfikacyjny={period.id}"
         )
-        if not data or "ocenyPrzedmioty" not in data:
-            return [], []
+        if not isinstance(data, dict) or "ocenyPrzedmioty" not in data:
+            raise VulcanFetchError("/api/Oceny response has no 'ocenyPrzedmioty' key")
 
         grades: list[Grade] = []
         summaries: list[SubjectSummary] = []
