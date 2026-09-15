@@ -860,13 +860,19 @@ async def handle_alive(request: web.Request) -> web.Response:
 async def handle_health(request: web.Request) -> web.Response:
     """Report whether the data behind this API is actually current.
 
-    Returns 503 when stale or failed so that dumb HTTP probes -- the Docker
-    healthcheck and pve-healthcheck on the PVE host -- can detect a frozen
-    pipeline without understanding the payload. This endpoint used to be a static
-    {"status": "ok"} literal, which meant every watchdog above it was decorative.
+    Returns 503 when stale or failed so that dumb HTTP probes -- pve-healthcheck on
+    the PVE host -- can detect a frozen pipeline without understanding the payload.
+    This endpoint used to be a static {"status": "ok"} literal, which meant every
+    watchdog above it was decorative.
+
+    `?soft=1` always returns 200. Home Assistant's REST sensor marks an entity
+    unavailable on any non-2xx, which would throw away this payload at exactly the
+    moment it becomes interesting, so HA reads the soft variant and decides for
+    itself based on `status`.
     """
     health = _get_health()
-    code = 503 if health["status"] in ("stale", "failed") else 200
+    soft = request.query.get("soft", "").lower() in ("1", "true", "yes")
+    code = 503 if not soft and health["status"] in ("stale", "failed") else 200
     return web.json_response(health, status=code)
 
 
