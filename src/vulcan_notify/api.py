@@ -12,6 +12,7 @@ from typing import Any
 from aiohttp import web
 
 from vulcan_notify.config import settings
+from vulcan_notify.freshness import ages, next_wakeup
 
 logger = logging.getLogger(__name__)
 
@@ -65,24 +66,22 @@ def _get_health() -> dict[str, Any]:
     finally:
         db.close()
 
-    def age_of(raw: str | None) -> float | None:
-        if not raw:
-            return None
-        try:
-            return (now - datetime.fromisoformat(raw)).total_seconds()
-        except ValueError:
-            return None
-
     sections: dict[str, Any] = {}
     for section in _SECTIONS:
         # Messages are account-wide; everything else is per student. A section is
         # only as fresh as its stalest active student.
         keys = [""] if section == "messages" else active_keys
-        ages = [age_of(stamps.get(f"last_success:{k}:{section}")) for k in keys] or [None]
-        age = None if any(a is None for a in ages) else max(a for a in ages if a is not None)
+        pairs = [ages(stamps.get(f"last_success:{k}:{section}"), now) for k in keys] or [None]
+        if any(p is None for p in pairs):
+            age: float | None = None
+            effective: float | None = None
+        else:
+            age = max(p[0] for p in pairs if p is not None)
+            effective = max(p[1] for p in pairs if p is not None)
         sections[section] = {
             "age_seconds": None if age is None else int(age),
-            "stale": True if age is None else age > stale_after,
+            # Compared on effective age: a quiet-hours pause is not staleness.
+            "stale": True if effective is None else effective > stale_after,
         }
 
     stale = [name for name, s in sections.items() if s["stale"]]
@@ -101,12 +100,22 @@ def _get_health() -> dict[str, Any]:
         s["age_seconds"] for s in sections.values() if s["age_seconds"] is not None
     ]
 
+    # Surfaced so an idle-but-healthy service says why it is idle. Without it, a
+    # five-hour-old age_seconds next to status "ok" reads like a bug in the check.
+    resume_at = next_wakeup(now)
+
     return {
         "status": status,
         "stale": status in ("stale", "failed"),
         "stale_sections": stale,
         "age_seconds": max(known_ages) if known_ages else None,
         "stale_after_seconds": stale_after,
+        "quiet_hours": {
+            "start": settings.quiet_hours_start,
+            "end": settings.quiet_hours_end,
+            "active": resume_at is not None,
+            "resumes_at": resume_at.isoformat() if resume_at else None,
+        },
         "sections": sections,
         "last_run": last_run,
         "generated_at": now.isoformat(),

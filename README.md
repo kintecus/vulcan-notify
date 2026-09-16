@@ -194,6 +194,7 @@ All settings are via environment variables or `.env` file:
 | `POLL_INTERVAL` | `1800` | Seconds between polls when run as a service |
 | `QUIET_HOURS_START` | `0` | Hour (0-23) to start quiet window, sync paused |
 | `QUIET_HOURS_END` | `5` | Hour (0-23) to end quiet window, sync resumes |
+| `QUIET_HOURS_TZ` | `Europe/Warsaw` | Zone the quiet window is read in. Not the container clock, which stays UTC |
 | `MESSAGE_SENDER_WHITELIST` | (empty) | Comma-separated sender names to filter messages |
 | `CALENDAR_MAP` | (empty) | JSON dict mapping student names to macOS calendar names |
 | `CALENDAR_REMINDER_HOURS` | `24` | Hours before event for calendar alarm |

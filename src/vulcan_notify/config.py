@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -29,8 +30,21 @@ class Settings(BaseSettings):
     # single source of truth for both the loop and the staleness threshold below.
     poll_interval: int = 1800  # seconds
 
+    # Quiet window, in the container's local time. sync-loop.sh reads these same two
+    # env vars to decide when to pause; they live here too so /api/health can subtract
+    # the pause from data age. Without that the two disagreed and a normal overnight
+    # sleep read as an outage -- see freshness.py.
+    # Evaluated in this zone, not the container's. The LXC runs on UTC, which quietly
+    # turned a 00:00-05:00 window into 02:00-07:00 local -- the loop went quiet two
+    # hours after midnight and resumed half an hour before the kids left, so the
+    # morning schedule was always five hours stale.
+    quiet_hours_tz: str = "Europe/Warsaw"
+    quiet_hours_start: int = Field(default=0, ge=0, le=23)
+    quiet_hours_end: int = Field(default=5, ge=0, le=23)
+
     # Data older than this is reported stale by /api/health and the `_meta` block.
     # Two missed cycles: one late sync is normal, two means something is wrong.
+    # Measured with quiet hours excluded, so this stays a tight daytime threshold.
     stale_after_seconds: int = 3600
 
     # Storage

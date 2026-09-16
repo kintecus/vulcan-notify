@@ -20,7 +20,7 @@ from vulcan_notify.client import SessionExpiredError, VulcanClient
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
 from vulcan_notify.display import BOLD, RESET, format_compact_sync, format_full_sync
-from vulcan_notify.mqtt import publish_changes
+from vulcan_notify.mqtt import drain_outbox, publish_changes
 from vulcan_notify.summarizer import format_changes_for_llm, summarize
 from vulcan_notify.sync import sync_all
 
@@ -110,6 +110,25 @@ async def _sync_calendar(db: Database) -> None:
         return
     cal_result = await sync_to_calendar(db)
     _print_calendar_result(cal_result)
+
+
+async def cmd_heartbeat() -> None:
+    """Publish the retained MQTT heartbeat without syncing.
+
+    Called by sync-loop.sh once per poll interval while it is parked in quiet hours.
+    The HA sensor on `school/status` carries `expire_after: 2400`, so five silent
+    hours dropped the entity to `unavailable` and wiped its attributes -- the
+    dashboard tile then had no timestamp at all and read "never synced" rather than
+    "5h ago". Ticking here keeps the entity alive and honest: still connected, no new
+    data expected yet.
+    """
+    db = Database(settings.db_path)
+    await db.connect()
+    try:
+        ok, pending = await drain_outbox(db)
+        print(f"heartbeat published (delivered={ok}, pending={pending})")
+    finally:
+        await db.close()
 
 
 async def cmd_sync() -> None:
@@ -285,6 +304,8 @@ def main() -> None:
             asyncio.run(cmd_test())
         case "sync":
             asyncio.run(cmd_sync())
+        case "heartbeat":
+            asyncio.run(cmd_heartbeat())
         case "calendar":
             asyncio.run(cmd_calendar())
         case "tui":
@@ -303,10 +324,11 @@ def main() -> None:
                 sys.exit(1)
             asyncio.run(cmd_summarize(summary_type=summary_type, days=days))
         case _:
-            print("Usage: vulcan-notify [auth|test|sync|calendar|tui|summarize]")
+            print("Usage: vulcan-notify [auth|test|sync|heartbeat|calendar|tui|summarize]")
             print("  auth      - Interactive login and save session")
             print("  test      - Test if saved session is valid")
             print("  sync      - Fetch latest data and show changes (default)")
+            print("  heartbeat - Publish the retained MQTT heartbeat only, no sync")
             print("  calendar  - Force re-sync all events to macOS Calendar")
             print("  tui       - Interactive message browser")
             print("  summarize - AI summary of recent changes or messages")
