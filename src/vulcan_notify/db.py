@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
+from vulcan_notify.freshness import ages
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -1157,27 +1159,22 @@ class Database:
         )
         stamps = {r[0]: r[1] for r in await cursor.fetchall()}
 
-        def age_of(raw: str | None) -> float | None:
-            if not raw:
-                return None
-            try:
-                return (now - datetime.fromisoformat(raw)).total_seconds()
-            except ValueError:
-                return None
-
         sections: dict[str, Any] = {}
         for section in SECTIONS:
             # Messages are account-wide, everything else is per student. A section is
             # only as fresh as its stalest active student.
             keys = [""] if section == "messages" else active_keys
-            ages = [age_of(stamps.get(f"last_success:{k}:{section}")) for k in keys] or [None]
-            if any(a is None for a in ages):
+            pairs = [ages(stamps.get(f"last_success:{k}:{section}"), now) for k in keys] or [None]
+            if any(p is None for p in pairs):
                 age: float | None = None
+                effective: float | None = None
             else:
-                age = max(a for a in ages if a is not None)
+                age = max(p[0] for p in pairs if p is not None)
+                effective = max(p[1] for p in pairs if p is not None)
             sections[section] = {
                 "age_seconds": None if age is None else int(age),
-                "stale": True if age is None else age > stale_after_seconds,
+                # Compared on effective age: a quiet-hours pause is not staleness.
+                "stale": True if effective is None else effective > stale_after_seconds,
             }
 
         stale = [name for name, s in sections.items() if s["stale"]]

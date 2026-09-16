@@ -269,6 +269,21 @@ returned zero rows is distinguishable from no fetch at all. Values are `ok`, `de
 `failed` (nothing has succeeded). The window is `STALE_AFTER_SECONDS`, default 3600 —
 two poll intervals, so one late sync is tolerated and two are not.
 
+**Age is measured with quiet hours subtracted** (`freshness.py`). `sync-loop.sh` pauses
+for five hours a night, which is far longer than `STALE_AFTER_SECONDS`, so comparing raw
+wall-clock age against the threshold reported every healthy night as an outage — 47 false
+Telegram alerts on 2026-09-15 before this was fixed. The endpoint reports real wall age
+(an alert quoting an age nobody can check against a clock is worse than no alert) but
+decides staleness on age minus the *scheduled* pause. A loop that wedged at 20:00 still
+ages past the threshold before midnight, so real failures are not forgiven; only the
+pause the loop was told to take is. `/api/health` also returns a `quiet_hours` block so
+an idle-but-green service explains itself.
+
+The window is evaluated in `QUIET_HOURS_TZ`, not the container clock. The clock stays UTC
+deliberately: every timestamp in the database is a naive `datetime.now()`, so moving it
+would reinterpret every existing row and produce a phantom age jump on the first health
+check after deploy.
+
 Errors are structured rather than tracebacks: a bad query param is a 400, a locked or
 missing database is a 503.
 
