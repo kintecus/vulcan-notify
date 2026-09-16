@@ -9,6 +9,11 @@ set -euo pipefail
 POLL_INTERVAL="${POLL_INTERVAL:-1800}"
 QUIET_HOURS_START="${QUIET_HOURS_START:-0}"
 QUIET_HOURS_END="${QUIET_HOURS_END:-5}"
+# The container clock stays UTC (every DB stamp is a naive datetime.now(), so moving
+# it would reinterpret every existing row). Only the quiet window is read in local
+# time -- on UTC it silently ran 02:00-07:00 local, leaving the morning schedule five
+# hours stale. Must match QUIET_HOURS_TZ in config.py, which does the same conversion.
+QUIET_HOURS_TZ="${QUIET_HOURS_TZ:-Europe/Warsaw}"
 
 # Consecutive failures are counted and logged loudly. We deliberately do NOT exit
 # on failure: a restart loop would lose the in-container retry cadence and Vulcan
@@ -16,19 +21,32 @@ QUIET_HOURS_END="${QUIET_HOURS_END:-5}"
 # 503, which pve-healthcheck picks up out-of-band.
 consecutive_failures=0
 
-echo "[sync-loop] interval=${POLL_INTERVAL}s quiet=${QUIET_HOURS_START}:00-${QUIET_HOURS_END}:00"
+echo "[sync-loop] interval=${POLL_INTERVAL}s quiet=${QUIET_HOURS_START}:00-${QUIET_HOURS_END}:00 ${QUIET_HOURS_TZ}"
 
 while true; do
-    hour=$(date '+%-H')
+    hour=$(TZ="$QUIET_HOURS_TZ" date '+%-H')
     if [ "$hour" -ge "$QUIET_HOURS_START" ] && [ "$hour" -lt "$QUIET_HOURS_END" ]; then
-        target_epoch=$(date -d "today ${QUIET_HOURS_END}:00" '+%s')
+        target_epoch=$(TZ="$QUIET_HOURS_TZ" date -d "today ${QUIET_HOURS_END}:00" '+%s')
         now_epoch=$(date '+%s')
         sleep_for=$((target_epoch - now_epoch))
         if [ "$sleep_for" -lt 60 ]; then
             sleep_for=60
         fi
-        echo "[sync-loop] Quiet hours, sleeping ${sleep_for}s until ${QUIET_HOURS_END}:00..."
-        sleep "$sleep_for"
+        # Nap in poll-interval chunks rather than one long sleep, publishing the
+        # retained MQTT heartbeat between chunks. The HA sensor on school/status
+        # carries expire_after: 2400, so a single five-hour sleep aged the entity out
+        # to `unavailable`, wiped its `ts` attribute, and left the dashboard tile
+        # reading "never synced" every night. Staying audible while deliberately idle
+        # is the whole point of a heartbeat.
+        if [ "$sleep_for" -gt "$POLL_INTERVAL" ]; then
+            echo "[sync-loop] Quiet hours until ${QUIET_HOURS_END}:00 (${sleep_for}s), heartbeat every ${POLL_INTERVAL}s..."
+            sleep "$POLL_INTERVAL"
+            uv run vulcan-notify heartbeat \
+                || echo "[sync-loop] WARN quiet-hours heartbeat failed" >&2
+        else
+            echo "[sync-loop] Quiet hours, sleeping ${sleep_for}s until ${QUIET_HOURS_END}:00..."
+            sleep "$sleep_for"
+        fi
         continue
     fi
 

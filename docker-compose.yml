@@ -11,6 +11,12 @@ x-common: &common
   environment:
     - DB_PATH=/app/data/vulcan_notify.db
     - SESSION_FILE=/app/data/session.json
+    # Deliberately NOT setting TZ. Every stamp in the DB is a naive datetime.now(),
+    # so moving the container clock would leave old rows on UTC and write new ones on
+    # local time -- a phantom two-hour jump in data age on the first health check
+    # after deploy, which is precisely the false 503 this change exists to stop.
+    # The clock stays UTC; only the quiet window is evaluated in local time.
+    - QUIET_HOURS_TZ=Europe/Warsaw
   logging:
     driver: json-file
     options:
