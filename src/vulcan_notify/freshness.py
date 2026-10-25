@@ -75,15 +75,58 @@ def _quiet_seconds_before(moment: datetime) -> float:
     return moment.toordinal() * per_day + partial
 
 
+_EXACT_SPAN = timedelta(days=7)
+
+
+def _quiet_seconds_exact(start: datetime, end: datetime) -> float:
+    """Overlap of [start, end) with each nightly window, integrated over real instants.
+
+    The closed form runs on local wall clock, so across a DST change it is off by an
+    hour. That is not harmless: on the night the clocks went back (2026-10-25) the
+    00:00-05:00 window lasted six real hours, the closed form credited five, and a
+    sync from 23:44 read as 76 minutes old against a 60 minute threshold. 39 false
+    alerts. Spans this short are cheap to walk night by night, so do it exactly.
+    """
+    try:
+        zone = ZoneInfo(settings.quiet_hours_tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = UTC
+
+    # Aware datetimes sharing one tzinfo subtract as wall clock, so do the arithmetic in UTC.
+    begin = (start.replace(tzinfo=UTC) if start.tzinfo is None else start).astimezone(UTC)
+    finish = (end.replace(tzinfo=UTC) if end.tzinfo is None else end).astimezone(UTC)
+    wraps = settings.quiet_hours_start > settings.quiet_hours_end
+
+    total = 0.0
+    day = begin.astimezone(zone).date() - timedelta(days=1)
+    last_day = finish.astimezone(zone).date()
+    while day <= last_day:
+        opens = datetime.combine(
+            day, time(hour=settings.quiet_hours_start), tzinfo=zone
+        ).astimezone(UTC)
+        closes_on = day + timedelta(days=1) if wraps else day
+        closes = datetime.combine(
+            closes_on, time(hour=settings.quiet_hours_end), tzinfo=zone
+        ).astimezone(UTC)
+        overlap = min(closes, finish) - max(opens, begin)
+        total += max(0.0, overlap.total_seconds())
+        day += timedelta(days=1)
+    return total
+
+
 def quiet_seconds_between(start: datetime, end: datetime) -> float:
     """Seconds in [start, end) that fall inside the configured quiet window.
 
-    A span crossing a DST boundary is off by the one-hour shift, since the arithmetic
-    runs on local wall clock. That is twice a year, in one direction, on a threshold
-    with hours of headroom -- not worth the complexity of instant-wise integration.
+    Spans up to a week are integrated over real instants so a DST change inside them
+    is counted correctly. Longer spans (a sentinel stamp years back) use the wall-clock
+    closed form, where an hour of DST skew is lost in the total.
     """
     if end <= start:
         return 0.0
+    if settings.quiet_hours_start == settings.quiet_hours_end:
+        return 0.0
+    if end - start <= _EXACT_SPAN:
+        return _quiet_seconds_exact(start, end)
     return _quiet_seconds_before(end) - _quiet_seconds_before(start)
 
 
