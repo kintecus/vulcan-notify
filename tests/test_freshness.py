@@ -130,3 +130,24 @@ def test_unknown_timezone_falls_back_instead_of_crashing(
     monkeypatch.setattr(settings, "quiet_hours_tz", "Mars/Olympus_Mons")
     # Falls back to reading the window in UTC, so 23:00-01:00 overlaps it by an hour.
     assert quiet_seconds_between(_utc(15, 23), _utc(16, 1)) == 3600
+
+
+def test_clocks_going_back_do_not_shorten_the_pause() -> None:
+    """2026-10-25: the 00:00-05:00 window lasted six real hours, not five.
+
+    Last sync 23:44 Warsaw (21:44 UTC), checked at 02:04 CET (01:04 UTC). Real elapsed
+    quiet time is 00:00 CEST -> 02:04 CET = 3h04m, leaving 16 minutes of effective age.
+    The wall-clock closed form credited only 2h04m and read the sync as 76 minutes old.
+    """
+    stamp = datetime(2026, 10, 24, 21, 44)
+    now = datetime(2026, 10, 25, 1, 4)
+
+    assert quiet_seconds_between(stamp, now) == (3 * 60 + 4) * 60
+    _, effective = ages(stamp.isoformat(), now)
+    assert effective == pytest.approx(16 * 60, abs=1)
+    assert effective < settings.stale_after_seconds
+
+
+def test_clocks_going_forward_do_not_lengthen_the_pause() -> None:
+    """2026-03-29: the window lasted four real hours, from 23:00 UTC to 03:00 UTC."""
+    assert quiet_seconds_between(datetime(2026, 3, 28, 20), datetime(2026, 3, 29, 6)) == 4 * 3600
