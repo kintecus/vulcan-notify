@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Read-only client for the vulcan-notify HTTP API. Standard library only.
+
+Every command is a GET against cached SQLite data on the server. Nothing here logs
+in to eduVulcan, triggers a sync, or can write anything.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+DEFAULT_URL = "http://localhost:8585"
+TIMEOUT_SECONDS = 15
+
+# resource -> (path, query params it accepts)
+RESOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "changes": ("/api/changes", ("since", "student", "type", "limit")),
+    "grades": ("/api/grades", ("n",)),
+    "grades-by-subject": ("/api/grades/by-subject", ("student", "period")),
+    "grades-summary": ("/api/grades/summary", ("student", "period")),
+    "exams": ("/api/exams", ("student", "days")),
+    "homework": ("/api/homework", ("n",)),
+    "messages": ("/api/messages", ("n",)),
+    "schedule": ("/api/schedule", ("student", "days", "only_substitutions")),
+    "attendance": ("/api/attendance", ("student", "days", "include_present")),
+    "health": ("/api/health", ("soft",)),
+}
+
+_TAG = re.compile(r"<[^>]+>")
+_BLANK_LINES = re.compile(r"\n\s*\n+")
+
+
+class ApiError(Exception):
+    pass
+
+
+def _base_url() -> str:
+    return os.environ.get("VULCAN_API_URL", DEFAULT_URL).rstrip("/")
+
+
+def fetch(resource: str, params: dict[str, Any]) -> Any:
+    path, accepted = RESOURCES[resource]
+    query = {k: str(v) for k, v in params.items() if k in accepted and v not in (None, False)}
+    url = f"{_base_url()}{path}"
+    if query:
+        url += "?" + urllib.parse.urlencode(query)
+    request = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:500]
+        raise ApiError(f"{exc.code} from {path}: {detail}") from None
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise ApiError(
+            f"cannot reach {_base_url()} ({exc}). The API is LAN-only: set VULCAN_API_URL "
+            "and check you are on the home network or tailnet."
+        ) from None
+
+
+def _plain(text: str) -> str:
+    text = re.sub(r"<br\s*/?>|</p>|</div>", "\n", text, flags=re.IGNORECASE)
+    text = html.unescape(_TAG.sub("", text))
+    return _BLANK_LINES.sub("\n\n", text).strip()
+
+
+def shrink(value: Any, max_chars: int) -> Any:
+    """Strip HTML from message bodies and cap long strings, to keep agent context small."""
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            if key in ("content", "body") and isinstance(item, str) and "<" in item:
+                item = _plain(item)
+            out[key] = shrink(item, max_chars)
+        return out
+    if isinstance(value, list):
+        return [shrink(item, max_chars) for item in value]
+    if isinstance(value, str) and max_chars and len(value) > max_chars:
+        return f"{value[:max_chars]}...[+{len(value) - max_chars} chars]"
+    return value
+
+
+def brief(args: argparse.Namespace) -> dict[str, Any]:
+    """Everything a morning brief needs, in one call.
+
+    A failing part is reported in place rather than failing the whole brief.
+    """
+    student = args.student
+    parts: dict[str, tuple[str, dict[str, Any]]] = {
+        "health": ("health", {"soft": 1}),
+        "changes": ("changes", {"since": args.since or "24h", "student": student}),
+        "exams": ("exams", {"student": student, "days": args.days or 7}),
+        "homework": ("homework", {"n": args.n or 5}),
+        "schedule_changes": (
+            "schedule",
+            {"student": student, "days": 3, "only_substitutions": 1},
+        ),
+        "attendance": ("attendance", {"student": student, "days": 14}),
+    }
+    out: dict[str, Any] = {}
+    for key, (resource, params) in parts.items():
+        try:
+            out[key] = fetch(resource, params)
+        except ApiError as exc:
+            out[key] = {"error": str(exc)}
+    if all("error" in v for v in out.values()):
+        raise ApiError(out["health"]["error"])
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="vulcan-ask",
+        description="Read-only queries against synced school data (vulcan-notify API).",
+        epilog=f"Base URL from VULCAN_API_URL (now: {_base_url()}). Output is JSON.",
+    )
+    parser.add_argument("resource", choices=["brief", *RESOURCES])
+    parser.add_argument("--student", help="exact student name as returned by the API")
+    parser.add_argument("--since", help="changes since: 7d, 12h, 30m, or ISO 8601")
+    parser.add_argument(
+        "--days", type=int, help="window in days (exams/schedule ahead, attendance back)"
+    )
+    parser.add_argument(
+        "-n", type=int, help="items per student (grades, homework) or total (messages)"
+    )
+    parser.add_argument("--type", help="changes only: comma list, e.g. grade,exam,message")
+    parser.add_argument("--limit", type=int, help="changes only: max rows (default 200)")
+    parser.add_argument("--period", help="grade period id, or 'all'")
+    parser.add_argument("--only-substitutions", action="store_true")
+    parser.add_argument("--include-present", action="store_true")
+    parser.add_argument(
+        "--max-chars", type=int, default=800, help="truncate long strings (0 = no limit)"
+    )
+    parser.add_argument("--pretty", action="store_true", help="indent output")
+    args = parser.parse_args(argv)
+
+    try:
+        if args.resource == "brief":
+            data: Any = brief(args)
+        else:
+            params = {
+                "since": args.since,
+                "student": args.student,
+                "days": args.days,
+                "n": args.n,
+                "type": args.type,
+                "limit": args.limit,
+                "period": args.period,
+                "only_substitutions": 1 if args.only_substitutions else None,
+                "include_present": 1 if args.include_present else None,
+                # A stale health check is still worth reading; don't turn it into an error.
+                "soft": 1 if args.resource == "health" else None,
+            }
+            data = fetch(args.resource, params)
+    except ApiError as exc:
+        print(f"vulcan-ask: {exc}", file=sys.stderr)
+        return 2
+
+    data = shrink(data, args.max_chars)
+    print(json.dumps(data, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
