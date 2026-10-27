@@ -8,14 +8,19 @@ from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
+from vulcan_notify.drift import KnownPath
 from vulcan_notify.freshness import ages
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from vulcan_notify.drift import Drift
     from vulcan_notify.models import (
         AttendanceEntry,
+        DayOff,
         Exam,
+        Excuse,
+        FeedItem,
         Grade,
         Homework,
         Lesson,
@@ -197,12 +202,72 @@ CREATE TABLE IF NOT EXISTS sync_sections (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_sections_run ON sync_sections(run_id);
+
+CREATE TABLE IF NOT EXISTS days_off (
+    student_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    date_from TEXT NOT NULL,
+    date_to TEXT NOT NULL,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_key, date_from, name)
+);
+
+CREATE TABLE IF NOT EXISTS excuses (
+    student_key TEXT NOT NULL,
+    id INTEGER NOT NULL,
+    day_id INTEGER,
+    date TEXT,
+    lesson_number INTEGER,
+    status INTEGER,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_key, id)
+);
+
+-- Remarks and announcements. Neither endpoint has returned an item yet, so the raw
+-- JSON is kept alongside the best-effort text until a real schema is known.
+CREATE TABLE IF NOT EXISTS feed_items (
+    student_key TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    text TEXT,
+    author TEXT,
+    date TEXT,
+    raw TEXT NOT NULL,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_key, kind, item_key)
+);
+
+-- Learned response structure per endpoint: key paths and types, never values.
+CREATE TABLE IF NOT EXISTS api_shapes (
+    endpoint TEXT NOT NULL,
+    path TEXT NOT NULL,
+    types TEXT NOT NULL,
+    missing INTEGER NOT NULL DEFAULT 0,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (endpoint, path)
+);
+
+CREATE TABLE IF NOT EXISTS api_drift (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    detected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    run_id INTEGER,
+    endpoint TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    detail TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_sync_runs_started ON sync_runs(started_at);
 """
 
 # Data sections a sync covers. Health is reported per section so a partial
 # outage names the broken part instead of just going red.
 SECTIONS = ("grades", "attendance", "exams", "homework", "schedule", "messages")
+
+# Synced and recorded per run like the core sections, and a failure still degrades the
+# run, but they do not drive freshness: a broken announcements feed should not page as
+# "school data is stale".
+AUX_SECTIONS = ("days_off", "excuses", "remarks", "announcements")
 
 
 class Database:
@@ -1141,6 +1206,120 @@ class Database:
         await self.commit()
         return cursor.rowcount
 
+    async def get_previous_item_counts(
+        self, student_key: str, section: str, before_run_id: int, limit: int = 3
+    ) -> list[int]:
+        """Item counts of the last `limit` successful runs of a section, newest first."""
+        cursor = await self.db.execute(
+            "SELECT item_count FROM sync_sections "
+            "WHERE student_key = ? AND section = ? AND status = 'ok' AND run_id < ? "
+            "ORDER BY run_id DESC LIMIT ?",
+            (student_key, section, before_run_id, limit),
+        )
+        return [int(r[0] or 0) for r in await cursor.fetchall()]
+
+    # ── Days off / excuses / feed items ──────────────────────────────
+
+    async def upsert_day_off(self, student_key: str, day: DayOff) -> None:
+        await self.db.execute(
+            "INSERT INTO days_off (student_key, name, date_from, date_to) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (student_key, date_from, name) DO UPDATE SET date_to = excluded.date_to",
+            (student_key, day.name, day.date_from, day.date_to),
+        )
+
+    async def get_day_off_keys(self, student_key: str) -> set[tuple[str, str]]:
+        cursor = await self.db.execute(
+            "SELECT date_from, name FROM days_off WHERE student_key = ?", (student_key,)
+        )
+        return {(r[0], r[1]) for r in await cursor.fetchall()}
+
+    async def is_day_off(self, day: str) -> bool:
+        """Whether `day` (YYYY-MM-DD) falls inside any stored day-off range."""
+        cursor = await self.db.execute(
+            "SELECT 1 FROM days_off WHERE substr(date_from, 1, 10) <= ? "
+            "AND substr(date_to, 1, 10) >= ? LIMIT 1",
+            (day, day),
+        )
+        return await cursor.fetchone() is not None
+
+    async def upsert_excuse(self, student_key: str, excuse: Excuse) -> None:
+        await self.db.execute(
+            "INSERT INTO excuses (student_key, id, day_id, date, lesson_number, status) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (student_key, id) DO UPDATE SET status = excluded.status, "
+            "updated_at = CASE WHEN excuses.status IS excluded.status "
+            "THEN excuses.updated_at ELSE CURRENT_TIMESTAMP END",
+            (
+                student_key,
+                excuse.id,
+                excuse.day_id,
+                excuse.date,
+                excuse.lesson_number,
+                excuse.status,
+            ),
+        )
+
+    async def get_excuse_statuses(self, student_key: str) -> dict[int, int]:
+        cursor = await self.db.execute(
+            "SELECT id, status FROM excuses WHERE student_key = ?", (student_key,)
+        )
+        return {int(r[0]): int(r[1] or 0) for r in await cursor.fetchall()}
+
+    async def upsert_feed_item(self, student_key: str, item: FeedItem) -> None:
+        await self.db.execute(
+            "INSERT OR REPLACE INTO feed_items "
+            "(student_key, kind, item_key, text, author, date, raw, first_seen) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT first_seen FROM feed_items "
+            "WHERE student_key = ? AND kind = ? AND item_key = ?), CURRENT_TIMESTAMP))",
+            (
+                student_key,
+                item.kind,
+                item.key,
+                item.text,
+                item.author,
+                item.date,
+                item.raw,
+                student_key,
+                item.kind,
+                item.key,
+            ),
+        )
+
+    async def get_feed_keys(self, student_key: str, kind: str) -> set[str]:
+        cursor = await self.db.execute(
+            "SELECT item_key FROM feed_items WHERE student_key = ? AND kind = ?",
+            (student_key, kind),
+        )
+        return {r[0] for r in await cursor.fetchall()}
+
+    # ── API drift ────────────────────────────────────────────────────
+
+    async def get_api_shapes(self) -> dict[str, dict[str, KnownPath]]:
+        cursor = await self.db.execute("SELECT endpoint, path, types, missing FROM api_shapes")
+        shapes: dict[str, dict[str, KnownPath]] = {}
+        for endpoint, path, types, missing in await cursor.fetchall():
+            shapes.setdefault(endpoint, {})[path] = KnownPath(
+                set(types.split("|")) if types else set(), bool(missing)
+            )
+        return shapes
+
+    async def save_api_shape(self, endpoint: str, known: dict[str, KnownPath]) -> None:
+        await self.db.executemany(
+            "INSERT INTO api_shapes (endpoint, path, types, missing) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (endpoint, path) DO UPDATE SET "
+            "types = excluded.types, missing = excluded.missing",
+            [
+                (endpoint, path, "|".join(sorted(k.types)), int(k.missing))
+                for path, k in known.items()
+            ],
+        )
+
+    async def record_drifts(self, drifts: list[Drift], run_id: int | None) -> None:
+        await self.db.executemany(
+            "INSERT INTO api_drift (run_id, endpoint, kind, path, detail) VALUES (?, ?, ?, ?, ?)",
+            [(run_id, d.endpoint, d.kind, d.path, d.detail) for d in drifts],
+        )
+
     async def get_health(self, stale_after_seconds: int = 3600) -> dict[str, Any]:
         """Aggregate freshness across sections into a single health document.
 
@@ -1189,9 +1368,7 @@ class Database:
         else:
             status = "ok"
 
-        fresh_ages = [
-            s["age_seconds"] for s in sections.values() if s["age_seconds"] is not None
-        ]
+        fresh_ages = [s["age_seconds"] for s in sections.values() if s["age_seconds"] is not None]
 
         return {
             "status": status,

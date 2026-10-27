@@ -11,12 +11,24 @@ from typing import TYPE_CHECKING
 import aiomqtt
 
 from vulcan_notify.config import settings
-from vulcan_notify.models import AttendanceEntry, Exam, Grade, Homework, Lesson, Message
+from vulcan_notify.drift import summarize
+from vulcan_notify.models import (
+    AttendanceEntry,
+    DayOff,
+    Exam,
+    Excuse,
+    FeedItem,
+    Grade,
+    Homework,
+    Lesson,
+    Message,
+)
 from vulcan_notify.text import strip_html
 
 if TYPE_CHECKING:
     from vulcan_notify.db import Database
     from vulcan_notify.differ import Change
+    from vulcan_notify.drift import Drift
     from vulcan_notify.sync import FullSyncResult
 
 logger = logging.getLogger(__name__)
@@ -44,7 +56,15 @@ _TOPIC_SEGMENTS = {
     "substitution": "substitutions",
     "cancellation": "cancellations",
     "addition": "additions",
+    "day_off": "days_off",
+    "excuse": "excuses",
+    "remark": "remarks",
+    "announcement": "announcements",
 }
+
+# School-level items both children receive identically. Published once under
+# `<prefix>/all/...` instead of pushing the same holiday to the phone twice.
+_SHARED_TYPES = ("day_off", "announcement")
 
 
 def _slugify(name: str) -> str:
@@ -134,6 +154,20 @@ def build_payload(change: Change) -> dict[str, object]:
             remarks=raw.remarks,
         )
 
+    elif isinstance(raw, DayOff):
+        base.update(name=raw.name, date_from=raw.date_from, date_to=raw.date_to)
+
+    elif isinstance(raw, Excuse):
+        base.update(
+            date=raw.date,
+            lesson_number=raw.lesson_number,
+            status=raw.status,
+            old_status=change.old_value,
+        )
+
+    elif isinstance(raw, FeedItem):
+        base.update(text=raw.text, author=raw.author, date=raw.date)
+
     return base
 
 
@@ -171,11 +205,29 @@ async def enqueue_changes(result: FullSyncResult, db: Database) -> None:
     if not settings.mqtt_enabled:
         return
 
+    shared: dict[tuple[str, str, str], list[Change]] = {}
     for sr in result.student_results:
         if sr.is_first_sync:
             continue
         for change in sr.all_changes:
-            await db.enqueue_mqtt(topic_for(change), json.dumps(build_payload(change)))
+            if change.item_type in _SHARED_TYPES:
+                shared.setdefault((change.item_type, change.title, change.body), []).append(change)
+            else:
+                await db.enqueue_mqtt(topic_for(change), json.dumps(build_payload(change)))
+
+    for group in shared.values():
+        first = group[0]
+        if len(group) == 1:
+            await db.enqueue_mqtt(topic_for(first), json.dumps(build_payload(first)))
+            continue
+        payload = build_payload(first)
+        payload["student"] = " & ".join(_display_name(c.student_name) for c in group)
+        segment = _TOPIC_SEGMENTS[first.item_type]
+        topic = f"{settings.mqtt_topic_prefix}/all/{segment}/{first.change_type}"
+        await db.enqueue_mqtt(topic, json.dumps(payload))
+
+    if result.drifts:
+        await db.enqueue_mqtt(drift_topic(), json.dumps(build_drift_payload(result.drifts)))
 
     if not result.is_first_message_sync:
         prefix = settings.mqtt_topic_prefix
@@ -184,6 +236,24 @@ async def enqueue_changes(result: FullSyncResult, db: Database) -> None:
             await db.enqueue_mqtt(topic, json.dumps(build_message_payload(msg)))
 
     await db.commit()
+
+
+def drift_topic() -> str:
+    # Four levels so the existing `school/+/+/+` push automation forwards it as-is.
+    return f"{settings.mqtt_topic_prefix}/system/api/drift"
+
+
+def build_drift_payload(drifts: list[Drift]) -> dict[str, object]:
+    """No `student` key: the HA automation falls back to "School" for the title."""
+    return {
+        "title": "eduVulcan API changed",
+        "message": summarize(drifts),
+        "drifts": [
+            {"endpoint": d.endpoint, "kind": d.kind, "path": d.path, "detail": d.detail}
+            for d in drifts
+        ],
+        "timestamp": _now_iso(),
+    }
 
 
 def status_topic() -> str:

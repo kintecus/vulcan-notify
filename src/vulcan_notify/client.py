@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import random
 from typing import Any
@@ -10,11 +12,14 @@ from typing import Any
 import aiohttp
 
 from vulcan_notify.auth import _make_ssl_context, cookies_for_url
+from vulcan_notify.drift import Shape, endpoint_name, extract, merge
 from vulcan_notify.models import (
     AttendanceEntry,
     ClassificationPeriod,
-    DashboardData,
+    DayOff,
     Exam,
+    Excuse,
+    FeedItem,
     Grade,
     Homework,
     Lesson,
@@ -94,6 +99,9 @@ class VulcanClient:
         self._messages_base = f"https://wiadomosci.eduvulcan.pl/{self._tenant}"
         self._ssl_ctx = _make_ssl_context()
         self._http: aiohttp.ClientSession | None = None
+        # Structure of every response this client has seen, per endpoint. Feeds drift
+        # detection; holds key paths and types only, never values.
+        self.shapes: dict[str, Shape] = {}
 
     def _cookie_header(self) -> str:
         url = f"{self._base_url}/api/"
@@ -131,9 +139,7 @@ class VulcanClient:
             session = await self._ensure_session()
 
             try:
-                async with session.get(
-                    url, ssl=self._ssl_ctx, headers=extra_headers or {}
-                ) as resp:
+                async with session.get(url, ssl=self._ssl_ctx, headers=extra_headers or {}) as resp:
                     content_type = resp.headers.get("content-type", "")
 
                     if "text/html" in content_type:
@@ -160,7 +166,9 @@ class VulcanClient:
                             _MAX_ATTEMPTS,
                         )
                     else:
-                        return await resp.json()
+                        data = await resp.json()
+                        merge(self.shapes.setdefault(endpoint_name(url), {}), extract(data))
+                        return data
 
             except (TimeoutError, aiohttp.ClientError) as exc:
                 last_error = exc
@@ -375,46 +383,45 @@ class VulcanClient:
             return None
         return dict(data)
 
-    async def get_dashboard(self, student: Student) -> DashboardData:
-        """Fetch all dashboard (Tablica) data concurrently for a student."""
-        grades_task = self._request(f"/api/OcenyTablica?key={student.key}")
-        attendance_task = self._request(f"/api/FrekwencjaTablica?key={student.key}")
-        exams_task = self.get_exams(student)
-        homework_task = self.get_homework(student)
-        announcements_task = self._request(f"/api/OgloszeniaTablica?key={student.key}")
-        messages_task = self._request("/api/WiadomosciNieodczytane")
+    # ── Days off, excuses, remarks, announcements ────────────────────
 
-        results = await asyncio.gather(
-            grades_task,
-            attendance_task,
-            exams_task,
-            homework_task,
-            announcements_task,
-            messages_task,
-            return_exceptions=True,
+    async def get_days_off(self, student: Student, date_from: str, date_to: str) -> list[DayOff]:
+        data = await self._request(
+            f"/api/DniWolne?key={student.key}&dataOd={date_from}&dataDo={date_to}"
         )
+        return [
+            DayOff(
+                name=str(d.get("nazwa") or ""),
+                date_from=str(d.get("dataOd") or ""),
+                date_to=str(d.get("dataDo") or ""),
+            )
+            for d in data or []
+        ]
 
-        def safe_result(r: Any, default: Any = None) -> Any:
-            if isinstance(r, Exception):
-                logger.warning("Dashboard fetch failed: %s", r)
-                return default
-            return r if r is not None else default
-
-        unread_data = safe_result(results[5], {})
-        unread_count = (
-            unread_data.get("liczbaWiadomosciNieodczytanych", 0)
-            if isinstance(unread_data, dict)
-            else 0
+    async def get_excuses(self, student: Student, date_from: str, date_to: str) -> list[Excuse]:
+        data = await self._request(
+            f"/api/Usprawiedliwienia?key={student.key}&dataOd={date_from}&dataDo={date_to}"
         )
+        if not isinstance(data, dict) or "usprawiedliwienia" not in data:
+            raise VulcanFetchError("/api/Usprawiedliwienia response has no 'usprawiedliwienia' key")
+        return [
+            Excuse(
+                id=e["idUsprawiedliwienieDzienPoraLekcji"],
+                day_id=e.get("idUsprawiedliwienieDzien") or 0,
+                date=str(e.get("dzien") or ""),
+                lesson_number=e.get("numerLekcji"),
+                status=e.get("status") or 0,
+            )
+            for e in data["usprawiedliwienia"] or []
+        ]
 
-        return DashboardData(
-            grades=safe_result(results[0], []),
-            attendance=safe_result(results[1], {}),
-            exams=safe_result(results[2], []),
-            homework=safe_result(results[3], []),
-            announcements=safe_result(results[4], []),
-            unread_messages=unread_count,
-        )
+    async def get_remarks(self, student: Student) -> list[FeedItem]:
+        data = await self._request(f"/api/Uwagi?key={student.key}")
+        return _feed_items("remark", data)
+
+    async def get_announcements(self, student: Student) -> list[FeedItem]:
+        data = await self._request(f"/api/OgloszeniaTablica?key={student.key}")
+        return _feed_items("announcement", data)
 
     # ── Schedule (Plan zajęć) ────────────────────────────────────────
 
@@ -464,13 +471,15 @@ class VulcanClient:
 
     # ── Messages (wiadomosci.eduvulcan.pl) ───────────────────────────
 
-    async def get_messages(self, page_size: int = 50) -> list[Message]:
-        """Fetch received messages from the messages subdomain.
+    async def get_messages(self, page_size: int = 50, last_id: int = 0) -> list[Message]:
+        """Fetch one page of received messages (unified inbox), newest first.
 
-        Returns up to page_size most recent messages (unified inbox).
+        `last_id=0` is the newest page. Passing a message id returns that message and
+        the ones older than it: the cursor is inclusive, so consecutive pages overlap
+        by one.
         """
         data = await self._request_url(
-            f"{self._messages_base}/api/Odebrane?idLastWiadomosc=0&pageSize={page_size}"
+            f"{self._messages_base}/api/Odebrane?idLastWiadomosc={last_id}&pageSize={page_size}"
         )
         if not data:
             return []
@@ -498,3 +507,42 @@ class VulcanClient:
             return None
         tresc = data.get("tresc")
         return str(tresc) if tresc is not None else None
+
+
+# Keys tried, in order, for the human-readable parts of a remark or announcement. A
+# guess until either endpoint returns a real item; drift detection learns the actual
+# shape on first sight and the raw item is stored either way.
+_TEXT_KEYS = ("tresc", "opis", "tytul", "temat", "nazwa", "kategoria")
+_AUTHOR_KEYS = ("nauczyciel", "nauczycielImieNazwisko", "autor", "dodal")
+_DATE_KEYS = ("data", "dataWpisu", "dataModyfikacji", "dataOd")
+
+
+def _first(item: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _feed_items(kind: str, data: Any) -> list[FeedItem]:
+    if isinstance(data, dict):
+        # Unobserved shape. Take the first list it carries rather than drop everything.
+        data = next((v for v in data.values() if isinstance(v, list)), [])
+    items: list[FeedItem] = []
+    for raw in data or []:
+        if not isinstance(raw, dict):
+            continue
+        canonical = json.dumps(raw, sort_keys=True, ensure_ascii=False)
+        key = str(raw.get("id") or hashlib.sha1(canonical.encode()).hexdigest()[:16])
+        items.append(
+            FeedItem(
+                kind=kind,
+                key=key,
+                text=_first(raw, _TEXT_KEYS),
+                author=_first(raw, _AUTHOR_KEYS),
+                date=_first(raw, _DATE_KEYS),
+                raw=canonical,
+            )
+        )
+    return items

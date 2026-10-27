@@ -11,11 +11,15 @@ from vulcan_notify.config import settings
 from vulcan_notify.differ import (
     Change,
     diff_attendance,
+    diff_days_off,
     diff_exams,
+    diff_excuses,
+    diff_feed,
     diff_grades,
     diff_homework,
     diff_schedule,
 )
+from vulcan_notify.drift import Drift, reconcile
 
 if TYPE_CHECKING:
     from vulcan_notify.client import VulcanClient
@@ -23,6 +27,10 @@ if TYPE_CHECKING:
     from vulcan_notify.models import Grade, Message, Student
 
 logger = logging.getLogger(__name__)
+
+_MESSAGE_PAGE = 50
+# Cap on pages of genuinely new messages per run (250). Past that something is off.
+_MAX_NEW_MESSAGE_PAGES = 5
 
 
 @dataclass
@@ -35,6 +43,10 @@ class SyncResult:
     new_exams: list[Change] = field(default_factory=list)
     new_homework: list[Change] = field(default_factory=list)
     new_substitutions: list[Change] = field(default_factory=list)
+    new_days_off: list[Change] = field(default_factory=list)
+    new_excuses: list[Change] = field(default_factory=list)
+    new_remarks: list[Change] = field(default_factory=list)
+    new_announcements: list[Change] = field(default_factory=list)
     unread_messages: int = 0
     is_first_sync: bool = False
     failed_sections: dict[str, str] = field(default_factory=dict)
@@ -45,13 +57,7 @@ class SyncResult:
 
     @property
     def has_changes(self) -> bool:
-        return bool(
-            self.new_grades
-            or self.new_attendance
-            or self.new_exams
-            or self.new_homework
-            or self.new_substitutions
-        )
+        return bool(self.all_changes)
 
     @property
     def all_changes(self) -> list[Change]:
@@ -61,6 +67,10 @@ class SyncResult:
             + self.new_exams
             + self.new_homework
             + self.new_substitutions
+            + self.new_days_off
+            + self.new_excuses
+            + self.new_remarks
+            + self.new_announcements
         )
 
 
@@ -71,6 +81,7 @@ class FullSyncResult:
     student_results: list[SyncResult]
     new_messages: list[Message] = field(default_factory=list)
     is_first_message_sync: bool = False
+    drifts: list[Drift] = field(default_factory=list)
 
 
 async def sync_student(
@@ -128,7 +139,10 @@ async def sync_student(
                 existing = all_grades.get(key)
                 if existing is None:
                     all_grades[key] = grade
-                elif existing.superseded_by_grade_id is not None and grade.superseded_by_grade_id is None:
+                elif (
+                    existing.superseded_by_grade_id is not None
+                    and grade.superseded_by_grade_id is None
+                ):
                     # Replace the original with the improvement
                     all_grades[key] = grade
             for summary in summaries:
@@ -265,6 +279,63 @@ async def sync_student(
     except Exception as exc:
         await section_failed("schedule", exc)
 
+    # ── Days off ─────────────────────────────────────────────────
+    # Sections added after a student's first sync baseline on their own first
+    # success, or every existing item would arrive as a push at once.
+    async def section_is_new(section: str) -> bool:
+        return await db.get_state(f"baseline:{student.key}:{section}") is None
+
+    async def section_baselined(section: str, item_count: int) -> None:
+        await db.set_state(f"baseline:{student.key}:{section}", datetime.now().isoformat())
+        await section_ok(section, item_count)
+
+    try:
+        now = datetime.now()
+        year = now.year if now.month >= 9 else now.year - 1
+        days_off = await client.get_days_off(
+            student, f"{year}-09-01T00:00:00.000Z", f"{year + 1}-08-31T23:59:59.999Z"
+        )
+        if not is_first and not await section_is_new("days_off"):
+            result.new_days_off = await diff_days_off(student, days_off, db)
+        for day in days_off:
+            await db.upsert_day_off(student.key, day)
+        await section_baselined("days_off", len(days_off))
+    except Exception as exc:
+        await section_failed("days_off", exc)
+
+    # ── Excuses ──────────────────────────────────────────────────
+    try:
+        now = datetime.now()
+        excuses = await client.get_excuses(
+            student,
+            (now - timedelta(days=settings.sync_attendance_days)).strftime(
+                "%Y-%m-%dT00:00:00.000Z"
+            ),
+            now.strftime("%Y-%m-%dT23:59:59.999Z"),
+        )
+        if not is_first and not await section_is_new("excuses"):
+            result.new_excuses = await diff_excuses(student, excuses, db)
+        for excuse in excuses:
+            await db.upsert_excuse(student.key, excuse)
+        await section_baselined("excuses", len(excuses))
+    except Exception as exc:
+        await section_failed("excuses", exc)
+
+    # ── Remarks / announcements ──────────────────────────────────
+    for section, fetch, target in (
+        ("remarks", client.get_remarks, result.new_remarks),
+        ("announcements", client.get_announcements, result.new_announcements),
+    ):
+        try:
+            items = await fetch(student)
+            if not is_first and not await section_is_new(section):
+                target.extend(await diff_feed(student, items, db))
+            for item in items:
+                await db.upsert_feed_item(student.key, item)
+            await section_baselined(section, len(items))
+        except Exception as exc:
+            await section_failed(section, exc)
+
     # Commit all entity upserts in one transaction
     await db.commit()
 
@@ -295,7 +366,21 @@ async def sync_messages(
     is_first = last_msg_sync is None
 
     try:
-        messages = await client.get_messages(page_size=50)
+        messages = await client.get_messages(page_size=_MESSAGE_PAGE)
+        # More than a page arrived since the last sync: keep paging while every
+        # message on the page is new, so none of them is silently skipped.
+        known_ids = await db.get_message_ids()
+        page, full = messages, len(messages) == _MESSAGE_PAGE
+        for _ in range(_MAX_NEW_MESSAGE_PAGES - 1):
+            if is_first or not full or any(m.id in known_ids for m in page):
+                break
+            cursor = page[-1].id
+            raw = await client.get_messages(_MESSAGE_PAGE, last_id=cursor)
+            full = len(raw) == _MESSAGE_PAGE
+            page = [m for m in raw if m.id < cursor]
+            if not page:
+                break
+            messages.extend(page)
     except Exception as exc:
         detail = f"{type(exc).__name__}: {exc}"[:500]
         logger.exception("Failed to fetch messages")
@@ -303,7 +388,6 @@ async def sync_messages(
             await db.record_section(run_id, "messages", "failed", error_detail=detail)
         return [], is_first, detail
 
-    known_ids = await db.get_message_ids()
     new_messages: list[Message] = []
 
     for msg in messages:
@@ -336,6 +420,8 @@ async def sync_messages(
     if backfill:
         logger.info("Backfilled content for %d message(s)", len(backfill))
 
+    await _backfill_message_history(client, db, messages)
+
     await db.set_state("last_sync:messages", datetime.now().isoformat())
     await db.commit()
 
@@ -343,6 +429,91 @@ async def sync_messages(
         await db.record_section(run_id, "messages", "ok", item_count=len(messages))
 
     return new_messages, is_first, None
+
+
+async def _backfill_message_history(
+    client: VulcanClient, db: Database, latest: list[Message]
+) -> None:
+    """Walk the inbox back a few pages per run until the oldest message is stored.
+
+    Only the newest page used to be fetched, so everything older than the 50 most
+    recent messages was never seen. These are history, not news: stored, never pushed.
+    """
+    if await db.get_state("messages_history_done"):
+        return
+    cursor_state = await db.get_state("messages_history_cursor")
+    cursor = int(cursor_state) if cursor_state else min((m.id for m in latest), default=0)
+    if not cursor:
+        return
+    try:
+        for _ in range(settings.sync_message_history_pages):
+            page = [
+                m for m in await client.get_messages(_MESSAGE_PAGE, last_id=cursor) if m.id < cursor
+            ]
+            if not page:
+                await db.set_state("messages_history_done", datetime.now().isoformat())
+                logger.info("Message history backfill complete")
+                break
+            for msg in page:
+                await db.upsert_message(msg)
+            cursor = min(m.id for m in page)
+            await db.set_state("messages_history_cursor", str(cursor))
+        await db.commit()
+    except Exception:
+        # History is best-effort; the newest page already succeeded.
+        logger.exception("Message history backfill failed at cursor %d", cursor)
+
+
+# Sections where zero items after a run of non-zero is implausible. Exams and homework
+# genuinely drop to zero; attendance and schedule do so only over a break.
+_NEVER_EMPTY = ("grades", "messages")
+_EMPTY_ON_BREAKS = ("attendance", "schedule")
+
+
+async def detect_api_drift(client: VulcanClient, db: Database, run_id: int) -> list[Drift]:
+    """Compare this run's response shapes and item counts against what was learned.
+
+    Never raises: drift detection is a watchdog, and a bug in it must not fail a sync
+    that otherwise fetched everything.
+    """
+    try:
+        drifts: list[Drift] = []
+        known = await db.get_api_shapes()
+        for endpoint, seen in client.shapes.items():
+            outcome = reconcile(endpoint, known.get(endpoint, {}), seen)
+            drifts.extend(outcome.drifts)
+            if outcome.changed:
+                await db.save_api_shape(endpoint, outcome.known)
+
+        on_break = await db.is_day_off(datetime.now().strftime("%Y-%m-%d"))
+        cursor = await db.db.execute(
+            "SELECT student_key, section FROM sync_sections "
+            "WHERE run_id = ? AND status = 'ok' AND item_count = 0",
+            (run_id,),
+        )
+        for student_key, section in await cursor.fetchall():
+            if section not in _NEVER_EMPTY and (section not in _EMPTY_ON_BREAKS or on_break):
+                continue
+            previous = await db.get_previous_item_counts(student_key, section, run_id)
+            if len(previous) == 3 and all(previous):
+                drifts.append(
+                    Drift(
+                        section,
+                        "empty",
+                        "",
+                        f"0 items after {', '.join(map(str, previous))} in the last 3 runs",
+                    )
+                )
+
+        if drifts:
+            await db.record_drifts(drifts, run_id)
+            for drift in drifts:
+                logger.warning("API drift: %s", drift.describe())
+        await db.commit()
+        return drifts
+    except Exception:
+        logger.exception("Drift detection failed")
+        return []
 
 
 async def sync_all(
@@ -406,12 +577,15 @@ async def sync_all(
         if failures:
             logger.error("Sync degraded: %d section failure(s): %s", errors, detail)
 
+        drifts = await detect_api_drift(client, db, run_id)
+
         await db.complete_sync_run(run_id, status, len(students), items, errors, detail)
 
         return FullSyncResult(
             student_results=student_results,
             new_messages=new_messages,
             is_first_message_sync=is_first_msg,
+            drifts=drifts,
         )
     except Exception as exc:
         await db.complete_sync_run(run_id, "failed", 0, items, errors + 1, str(exc))

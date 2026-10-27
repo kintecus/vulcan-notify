@@ -11,7 +11,10 @@ if TYPE_CHECKING:
     from vulcan_notify.db import Database
     from vulcan_notify.models import (
         AttendanceEntry,
+        DayOff,
         Exam,
+        Excuse,
+        FeedItem,
         Grade,
         Homework,
         Lesson,
@@ -327,4 +330,81 @@ async def diff_homework(
                 )
             )
 
+    return changes
+
+
+def _date_span(day: DayOff) -> str:
+    start, end = _short_due(day.date_from), _short_due(day.date_to)
+    return start if start == end else f"{start} - {end}"
+
+
+async def diff_days_off(student: Student, fetched: list[DayOff], db: Database) -> list[Change]:
+    """Detect newly announced days off (by start date + name)."""
+    stored = await db.get_day_off_keys(student.key)
+    return [
+        Change(
+            change_type="new",
+            item_type="day_off",
+            student_name=student.name,
+            title=f"Day off: {day.name}",
+            body=_date_span(day),
+            tags=["school"],
+            raw=day,
+        )
+        for day in fetched
+        if (day.date_from, day.name) not in stored
+    ]
+
+
+async def diff_excuses(student: Student, fetched: list[Excuse], db: Database) -> list[Change]:
+    """Detect excuses whose status changed. New ones are the parent's own submissions."""
+    stored = await db.get_excuse_statuses(student.key)
+    changes: list[Change] = []
+    for excuse in fetched:
+        old = stored.get(excuse.id)
+        if old is None or old == excuse.status:
+            continue
+        lesson = f", lesson {excuse.lesson_number}" if excuse.lesson_number else ""
+        changes.append(
+            Change(
+                change_type="updated",
+                item_type="excuse",
+                student_name=student.name,
+                title="Excuse status changed",
+                body=f"{_short_due(excuse.date)}{lesson}: status {old} -> {excuse.status}",
+                tags=["school"],
+                raw=excuse,
+                old_value=str(old),
+            )
+        )
+    return changes
+
+
+_FEED_TITLES = {"remark": "New remark", "announcement": "New announcement"}
+
+
+async def diff_feed(student: Student, fetched: list[FeedItem], db: Database) -> list[Change]:
+    """Detect new remarks or announcements (by item key)."""
+    if not fetched:
+        return []
+    stored = await db.get_feed_keys(student.key, fetched[0].kind)
+    changes: list[Change] = []
+    for item in fetched:
+        if item.key in stored:
+            continue
+        body = item.text[:200] or "Open the e-journal for details"
+        if item.author:
+            body = f"{item.author}: {body}"
+        changes.append(
+            Change(
+                change_type="new",
+                item_type=item.kind,
+                student_name=student.name,
+                title=_FEED_TITLES.get(item.kind, f"New {item.kind}"),
+                body=body,
+                priority=4 if item.kind == "remark" else 3,
+                tags=["school"],
+                raw=item,
+            )
+        )
     return changes

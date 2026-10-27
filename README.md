@@ -5,7 +5,7 @@
 
 Syncs the eduVulcan web API to a local SQLite database and diffs each run against the last one. Any changes go out to the terminal, macOS Calendar, MQTT, and an HTTP/iCalendar API, so Home Assistant (or anything else) can react to school events as they happen.
 
-**Tracks** grades, attendance, exams, homework, messages (with an optional sender whitelist), and lesson substitutions/cancellations. It handles multiple students under one parent account.
+**Tracks** grades, attendance, exams, homework, messages (with an optional sender whitelist), lesson substitutions/cancellations, days off, absence excuses, remarks, and announcements. It handles multiple students under one parent account, and alerts when the undocumented eduVulcan API changes shape.
 
 **Exposes** terminal output, macOS Calendar events, MQTT events with a persistent outbox, a JSON API on `:8585`, a per-student `.ics` feed, and optional AI digests via any OpenAI-compatible API.
 
@@ -70,8 +70,9 @@ flowchart LR
 1. **Auth** - log in once in a Playwright browser to save session cookies. If credentials are stored, the tool renews expired sessions headlessly.
 2. **Fetch** - call the eduVulcan web API with those cookies: grades (all periods), attendance (last 90 days), exams, homework, messages, and the schedule.
 3. **Diff and persist** - compare against SQLite and upsert with `INSERT OR REPLACE`. Exams and homework that drop out of the API are soft-deleted. The first sync stores a baseline and reports nothing.
-4. **Publish** - print changes, write them to macOS Calendar, and drain the MQTT outbox to the broker. The outbox survives broker outages.
-5. **Serve** - a separate long-running process (`python -m vulcan_notify.api`) serves HTTP and iCalendar from the same SQLite file.
+4. **Watch for drift** - compare each response's structure (key paths and types, never values) with what was learned before. A renamed or missing field, a type change, or a section that suddenly returns nothing raises an alert.
+5. **Publish** - print changes, write them to macOS Calendar, and drain the MQTT outbox to the broker. The outbox survives broker outages.
+6. **Serve** - a separate long-running process (`python -m vulcan_notify.api`) serves HTTP and iCalendar from the same SQLite file.
 
 Module breakdown, schema, MQTT topic map, and endpoint reference: [`docs/architecture.md`](docs/architecture.md).
 
@@ -101,13 +102,14 @@ uv run vulcan-notify sync
 | `vulcan-notify calendar` | Force a clean re-sync of macOS Calendar events |
 | `vulcan-notify tui` | Textual browser for synced content (`uv sync --extra tui`) |
 | `vulcan-notify summarize [--type sync\|messages] [--days N]` | AI digest of recent changes or messages (needs `LLM_API_KEY`) |
+| `vulcan-notify shapes` | Print the learned API response structure as JSON (no values) |
 
 ## Home Assistant
 
 In production, vulcan-notify runs in Docker on a Proxmox LXC as two services: the sync loop and the API. It publishes to the Mosquitto add-on in Home Assistant OS.
 
-- **MQTT (event-driven)** - topics follow `<prefix>/<student>/<segment>/<change_type>`, e.g. `school/alice/grades/new` or `school/alice/substitutions/new`, with JSON payloads. A retained `school/status` heartbeat with an LWT lets HA detect a silent daemon.
-- **HTTP (pull-based)** - REST sensors poll `/api/grades/monthly`, `/api/messages`, `/api/schedule`, and others. `/api/health` returns 503 when data goes stale, and quiet hours don't count toward staleness. Any calendar client can subscribe to `/calendar/<name>.ics`.
+- **MQTT (event-driven)** - topics follow `<prefix>/<student>/<segment>/<change_type>`, e.g. `school/alice/grades/new` or `school/alice/remarks/new`, with JSON payloads. Days off and announcements that all students share go to `school/all/...` once. API drift alerts go to `school/system/api/drift`. A retained `school/status` heartbeat with an LWT lets HA detect a silent daemon.
+- **HTTP (pull-based)** - REST sensors poll `/api/grades/monthly`, `/api/messages`, `/api/schedule`, and others. `/api/health` returns 503 when data goes stale (quiet hours don't count toward staleness) and lists recent API drift. Any calendar client can subscribe to `/calendar/<name>.ics`.
 
 Setup: [`docs/deployment.md`](docs/deployment.md).
 
@@ -142,6 +144,7 @@ Set these as environment variables or in `.env`.
 | `VULCAN_LOGIN` / `VULCAN_PASSWORD` | (none) | Credentials for headless re-auth |
 | `SYNC_ATTENDANCE_DAYS` | `90` | Attendance lookback window |
 | `SYNC_MESSAGE_BACKFILL_BATCH` | `10` | Legacy message bodies to refetch per run |
+| `SYNC_MESSAGE_HISTORY_PAGES` | `3` | Older inbox pages (50 each) to backfill per run, until the oldest is stored |
 | `SYNC_HISTORY_KEEP_DAYS` | `90` | Retention for sync run history |
 | `POLL_INTERVAL` | `1800` | Seconds between syncs in the service loop |
 | `QUIET_HOURS_START` / `QUIET_HOURS_END` | `0` / `5` | Hours (0-23) when syncing pauses |

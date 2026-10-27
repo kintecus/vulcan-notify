@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Sync
     sync_attendance_days: int = 90  # how far back to sync attendance
     sync_message_backfill_batch: int = 10  # messages to backfill per cycle
+    sync_message_history_pages: int = 3  # older inbox pages (50 each) to walk per cycle
     sync_history_keep_days: int = 90  # sync_runs / sync_sections retention
 
     # Polling. sync-loop.sh reads POLL_INTERVAL from the environment, so this is the

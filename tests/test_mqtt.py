@@ -462,3 +462,78 @@ async def test_outbox_drains_on_retry(db: Database) -> None:
     assert first_call.args == ("school/kacper/grades/new", '{"title":"pending"}')
     assert mock_client_instance.publish.call_args_list[1].args[0] == "school/status"
     assert await db.list_mqtt_outbox() == []
+
+
+async def _enqueued(result: FullSyncResult, db: Database) -> list[tuple[str, dict]]:
+    import json
+
+    from vulcan_notify.mqtt import enqueue_changes
+
+    with patch("vulcan_notify.mqtt.settings") as mock_settings:
+        mock_settings.mqtt_enabled = True
+        mock_settings.mqtt_topic_prefix = "school"
+        mock_settings.display_name_map = {}
+        await enqueue_changes(result, db)
+    return [(str(r["topic"]), json.loads(str(r["payload"]))) for r in await db.list_mqtt_outbox()]
+
+
+async def test_shared_day_off_published_once_for_both_students(db: Database) -> None:
+    from vulcan_notify.models import DayOff
+
+    other = Student(
+        key="KEY2", name="Ola", class_name="5B", school="Szkola", diary_id=1002, mailbox_key="b"
+    )
+    day = DayOff("Dzien dyrektorski", "2026-11-10T00:00:00", "2026-11-10T00:00:00")
+
+    def change(student: Student) -> Change:
+        return Change("new", "day_off", student.name, "Day off: Dzien dyrektorski", "Tue", raw=day)
+
+    result = FullSyncResult(
+        student_results=[
+            SyncResult(student=STUDENT, new_days_off=[change(STUDENT)]),
+            SyncResult(student=other, new_days_off=[change(other)]),
+        ]
+    )
+    rows = await _enqueued(result, db)
+    assert [t for t, _ in rows] == ["school/all/days_off/new"]
+    assert rows[0][1]["student"] == "Kacper & Ola"
+    assert rows[0][1]["name"] == "Dzien dyrektorski"
+
+
+async def test_day_off_for_one_student_stays_per_student(db: Database) -> None:
+    from vulcan_notify.models import DayOff
+
+    day = DayOff("Ferie", "2027-01-19T00:00:00", "2027-02-01T00:00:00")
+    sr = SyncResult(
+        student=STUDENT,
+        new_days_off=[Change("new", "day_off", STUDENT.name, "Day off: Ferie", "x", raw=day)],
+    )
+    rows = await _enqueued(FullSyncResult(student_results=[sr]), db)
+    assert [t for t, _ in rows] == ["school/kacper/days_off/new"]
+
+
+async def test_remark_topic(db: Database) -> None:
+    from vulcan_notify.models import FeedItem
+
+    item = FeedItem("remark", "1", "Brak stroju", "Nowak A.", "2026-10-01", "{}")
+    sr = SyncResult(
+        student=STUDENT,
+        new_remarks=[Change("new", "remark", STUDENT.name, "New remark", "x", raw=item)],
+    )
+    rows = await _enqueued(FullSyncResult(student_results=[sr]), db)
+    assert rows[0][0] == "school/kacper/remarks/new"
+    assert rows[0][1]["text"] == "Brak stroju"
+
+
+async def test_drift_published_on_four_level_system_topic(db: Database) -> None:
+    from vulcan_notify.drift import Drift
+
+    drifts = [Drift("uczen:Oceny", "missing", "$.ocenyPrzedmioty[].wpis", "key no longer returned")]
+    rows = await _enqueued(FullSyncResult(student_results=[], drifts=drifts), db)
+    assert len(rows) == 1
+    topic, payload = rows[0]
+    assert topic == "school/system/api/drift"
+    assert topic.count("/") == 3  # matches HA's school/+/+/+ push automation
+    assert "student" not in payload
+    assert payload["title"] == "eduVulcan API changed"
+    assert payload["drifts"][0]["kind"] == "missing"

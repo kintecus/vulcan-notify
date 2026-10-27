@@ -172,9 +172,7 @@ async def test_get_grades(session_data: dict, student: Student) -> None:
     assert grades[0].weight == 2
 
 
-async def test_get_grades_null_category_coalesced(
-    session_data: dict, student: Student
-) -> None:
+async def test_get_grades_null_category_coalesced(session_data: dict, student: Student) -> None:
     """Vulcan sometimes returns an explicit null for kategoriaKolumny/nazwaKolumny/wpis.
 
     dict.get(key, default) returns None (not the default) on an explicit null, and
@@ -298,3 +296,84 @@ async def test_get_attendance(session_data: dict, student: Student) -> None:
     assert len(entries) == 1
     assert entries[0].category == 2
     assert entries[0].subject == "Przyroda"
+
+
+@pytest.fixture
+def fast_client(session_data: dict, monkeypatch: pytest.MonkeyPatch) -> VulcanClient:
+    monkeypatch.setattr(VulcanClient, "_jitter", staticmethod(AsyncMock()))
+    return VulcanClient(session_data)
+
+
+async def test_fetch_records_shape_per_endpoint(fast_client: VulcanClient) -> None:
+    fast_client._http = _mock_session(_mock_response([{"id": 1, "nazwa": "Ferie"}]))
+    await fast_client._request("/api/DniWolne?key=K&dataOd=a&dataDo=b")
+    shape = fast_client.shapes["uczen:DniWolne"]
+    assert shape["$[].nazwa"] == {"string"}
+    assert "Ferie" not in repr(fast_client.shapes)
+
+
+async def test_get_days_off(fast_client: VulcanClient, student: Student) -> None:
+    payload = [
+        {
+            "nazwa": "Ferie zimowe",
+            "dataOd": "2027-01-19T00:00:00",
+            "dataDo": "2027-02-01T00:00:00",
+            "wszystkieSkladowe": True,
+            "jednostkiSkladowe": [],
+        }
+    ]
+    fast_client._http = _mock_session(_mock_response(payload))
+    days = await fast_client.get_days_off(student, "a", "b")
+    assert days[0].name == "Ferie zimowe"
+    assert days[0].date_to.startswith("2027-02-01")
+
+
+async def test_get_excuses(fast_client: VulcanClient, student: Student) -> None:
+    payload = {
+        "usprawiedliwienia": [
+            {
+                "idUsprawiedliwienieDzienPoraLekcji": 5,
+                "idUsprawiedliwienieDzien": 50,
+                "dzien": "2026-10-01T00:00:00",
+                "numerLekcji": None,
+                "status": 1,
+            }
+        ],
+        "usprawiedliwieniaAktywne": True,
+        "usprawiedliwieniaBlokada": None,
+    }
+    fast_client._http = _mock_session(_mock_response(payload))
+    excuses = await fast_client.get_excuses(student, "a", "b")
+    assert excuses[0].id == 5
+    assert excuses[0].lesson_number is None
+    assert excuses[0].status == 1
+
+
+async def test_get_excuses_without_key_raises(fast_client: VulcanClient, student: Student) -> None:
+    from vulcan_notify.client import VulcanFetchError
+
+    fast_client._http = _mock_session(_mock_response({"somethingElse": []}))
+    with pytest.raises(VulcanFetchError):
+        await fast_client.get_excuses(student, "a", "b")
+
+
+async def test_get_remarks_best_effort_fields(fast_client: VulcanClient, student: Student) -> None:
+    payload = [{"tresc": "Brak stroju", "nauczyciel": "Nowak A.", "data": "2026-10-01"}]
+    fast_client._http = _mock_session(_mock_response(payload))
+    [item] = await fast_client.get_remarks(student)
+    assert (item.kind, item.text, item.author) == ("remark", "Brak stroju", "Nowak A.")
+    assert len(item.key) == 16  # no id, so a stable hash of the item
+
+
+async def test_get_announcements_empty(fast_client: VulcanClient, student: Student) -> None:
+    fast_client._http = _mock_session(_mock_response([]))
+    assert await fast_client.get_announcements(student) == []
+
+
+async def test_get_messages_passes_cursor(fast_client: VulcanClient) -> None:
+    sess = _mock_session(_mock_response([]))
+    fast_client._http = sess
+    await fast_client.get_messages(page_size=50, last_id=379162)
+    url = sess.get.call_args.args[0]
+    assert "idLastWiadomosc=379162" in url
+    assert "pageSize=50" in url
