@@ -273,6 +273,10 @@ CREATE TABLE IF NOT EXISTS changes (
     payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_changes_detected ON changes(detected_at);
+-- When the log began. A feed that only started today is empty for the past week, which
+-- reads exactly like a quiet week unless the reader can see where history begins.
+INSERT OR IGNORE INTO sync_state (key, value)
+    SELECT 'changes_log_started', COALESCE(MIN(detected_at), CURRENT_TIMESTAMP) FROM changes;
 """
 
 # Data sections a sync covers. Health is reported per section so a partial

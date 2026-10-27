@@ -665,3 +665,33 @@ async def test_attendance_hides_present_and_joins_excuses(seeded_db: Path) -> No
     assert sol["records"][0]["excuse_status"] is None
 
     assert api_mod._get_attendance(days=30, include_present=True)["Solomiia"]["count"] == 3
+
+
+async def test_changes_flags_history_that_starts_inside_the_window(seeded_db: Path) -> None:
+    out = api_mod._get_changes("7d")
+    # The log began when the schema was created, i.e. just now: an empty list
+    # here means "no history yet", not "a quiet week".
+    assert out["count"] == 0
+    assert out["log_started_at"] is not None
+    assert out["complete"] is False
+
+    db = Database(seeded_db)
+    await db.connect()
+    await db.set_state("changes_log_started", "2020-01-01 00:00:00")
+    await db.commit()
+    await db.close()
+    assert api_mod._get_changes("7d")["complete"] is True
+
+
+async def test_log_start_marker_keeps_oldest_existing_change(tmp_path: Path) -> None:
+    db = Database(tmp_path / "m.db")
+    await db.connect()
+    await db.db.execute("DELETE FROM sync_state WHERE key = 'changes_log_started'")
+    await db.record_change(None, "A", "grade", "new", "t", "b", "{}")
+    await db.db.execute("UPDATE changes SET detected_at = '2026-01-02 03:04:05'")
+    await db.commit()
+    await db.close()
+
+    await db.connect()  # existing install upgrading: marker backfills from the log
+    assert await db.get_state("changes_log_started") == "2026-01-02 03:04:05"
+    await db.close()
