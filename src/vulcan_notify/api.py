@@ -766,6 +766,9 @@ def _get_changes(
     Mirrors what MQTT pushed, minus first-sync baselines. Messages are account-wide
     (`student` null) and are kept when filtering by student, since they usually
     concern one.
+
+    `complete` is false when the log began after `since` (new install, DB reset):
+    an empty list then means "no history yet", not "nothing changed".
     """
     now = datetime.now(UTC).replace(tzinfo=None)
     start = _parse_since(since, now)
@@ -788,11 +791,15 @@ def _get_changes(
     db = _connect()
     try:
         rows = db.execute(sql, params).fetchall()
+        started = db.execute(
+            "SELECT value FROM sync_state WHERE key = 'changes_log_started'"
+        ).fetchone()
     except sqlite3.OperationalError:
         # Table not created yet: the API container can start before the first sync.
-        rows = []
+        rows, started = [], None
     finally:
         db.close()
+    log_started = datetime.fromisoformat(started[0]) if started else None
 
     changes = []
     for r in rows[:limit]:
@@ -815,6 +822,10 @@ def _get_changes(
     return {
         "since": f"{start.isoformat(timespec='seconds')}+00:00",
         "until": f"{now.isoformat(timespec='seconds')}+00:00",
+        "log_started_at": (
+            f"{log_started.isoformat(timespec='seconds')}+00:00" if log_started else None
+        ),
+        "complete": log_started is not None and log_started <= start,
         "count": len(changes),
         "truncated": len(rows) > limit,
         "changes": changes,

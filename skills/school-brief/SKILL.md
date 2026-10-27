@@ -29,11 +29,17 @@ plainly when nothing does.
 
 1. Run `scripts/vulcan-ask brief`. It returns health, changes in the last 24 h, exams in
    the next 7 days, recent homework, substitutions and cancellations in the next 3 days,
-   and attendance for the last 14 days, for every child. On Monday, add `--since 72h` to
-   cover the weekend. If one part shows `{"error": ...}`, work with the rest and mention
-   the gap.
-2. Drill down only where the brief raises a question (commands below).
-3. Write the brief in the format below.
+   attendance for the last 14 days, the 5 latest grades per child, and the 5 latest
+   messages. On Monday, add `--since 72h` to cover the weekend. If one part shows
+   `{"error": ...}`, work with the rest and mention the gap.
+2. **Don't trust an empty change list on its own.** If `changes.complete` is missing or false, the
+   log only begins at `changes.log_started_at` (a new install or a reset), so missing
+   changes before then are unknown, not absent. Say so in one line. Then find new items
+   by date in `grades` and `messages`: grades dated inside the window count as new, and
+   so do messages. Even when `complete` is true, check `grades` for anything below 3 in
+   the window, which costs nothing.
+3. Drill down only where the brief raises a question (commands below).
+4. Write the brief in the format below.
 
 | Need | Command |
 |---|---|
@@ -82,7 +88,11 @@ use first names.
   `announcement`), `change` is `new` or `updated`, and `details` carries the fields.
   `detected_at` is UTC and marks when the sync noticed, not when the teacher entered it.
   Messages have `student: null`, because the inbox is shared.
-- Dates in exams, homework, and the schedule are local school dates.
+- Dates in exams, homework, and the schedule are local school dates. Grade `date` is
+  `DD.MM.YYYY`.
+- **Timestamps without an offset are UTC.** That covers `_meta.generated_at` and
+  `health.last_run` (`started_at`, `completed_at`). The school is in Europe/Warsaw (UTC+1
+  in winter, UTC+2 in summer), so convert before writing "data as of".
 
 ## Brief format
 

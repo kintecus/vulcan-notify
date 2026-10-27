@@ -20,6 +20,7 @@ from typing import Any
 
 DEFAULT_URL = "http://localhost:8585"
 TIMEOUT_SECONDS = 15
+BRIEF_MESSAGE_CHARS = 300
 
 # resource -> (path, query params it accepts)
 RESOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -100,6 +101,10 @@ def brief(args: argparse.Namespace) -> dict[str, Any]:
         "changes": ("changes", {"since": args.since or "24h", "student": student}),
         "exams": ("exams", {"student": student, "days": args.days or 7}),
         "homework": ("homework", {"n": args.n or 5}),
+        # Always included, not only via `changes`: a change log that started recently
+        # is empty for the past week, and that must not read as "no new grades".
+        "grades": ("grades", {"n": 5}),
+        "messages": ("messages", {"n": 5}),
         "schedule_changes": (
             "schedule",
             {"student": student, "days": 3, "only_substitutions": 1},
@@ -112,6 +117,8 @@ def brief(args: argparse.Namespace) -> dict[str, Any]:
             out[key] = fetch(resource, params)
         except ApiError as exc:
             out[key] = {"error": str(exc)}
+    # Enough to tell what a message is about; `vulcan-ask messages` has the full text.
+    out["messages"] = shrink(out["messages"], BRIEF_MESSAGE_CHARS)
     if all("error" in v for v in out.values()):
         raise ApiError(out["health"]["error"])
     return out

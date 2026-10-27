@@ -278,7 +278,7 @@ Long-running aiohttp server on port 8585, reading the same SQLite the sync write
 | `GET /api/exams?student=&days=` | Upcoming exams. |
 | `GET /api/messages?n=` | Recent messages (with content once backfilled). |
 | `GET /api/attendance?student=&days=&include_present=` | Absences, lateness, and other non-present lessons over the last `days` (default 30), with per-category counts and the status of any excuse covering each lesson. |
-| `GET /api/changes?since=&student=&type=&limit=` | Changes detected by syncs, newest first. `since` takes `7d`, `12h`, `30m`, or ISO 8601 (naive means UTC); default 24h. `student=` keeps account-wide messages. `type` is a comma list of item types (`grade`, `exam`, `message`, ...). |
+| `GET /api/changes?since=&student=&type=&limit=` | Changes detected by syncs, newest first. `since` takes `7d`, `12h`, `30m`, or ISO 8601 (naive means UTC); default 24h. `student=` keeps account-wide messages. `type` is a comma list of item types (`grade`, `exam`, `message`, ...). `complete` is false when the log began after `since` (`log_started_at`), so an empty list there means no history yet, not a quiet week. |
 | `GET /api/schedule?student=&only_substitutions=&days=` | Lesson schedule including substitutions/cancellations. |
 | `GET /calendar/<student>.ics` | Per-student iCalendar feed (see below). |
 
