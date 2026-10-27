@@ -66,6 +66,7 @@ def test_brief_reports_failed_parts_in_place(
     out = json.loads(capsys.readouterr().out)
     assert out["changes"] == {"error": "404 from /api/changes"}
     assert out["exams"] == {"resource": "exams"}
+    assert out["grades"] == {"resource": "grades"}
 
 
 def test_unreachable_api_exits_2(
