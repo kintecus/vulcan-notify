@@ -113,6 +113,10 @@ In production, vulcan-notify runs in Docker on a Proxmox LXC as two services: th
 
 Setup: [`docs/deployment.md`](docs/deployment.md).
 
+## Agent access
+
+[`skills/school-brief`](skills/school-brief) is an Agent Skill (Claude Code, Codex, Pi) that turns a coding agent into a read-only school chief of staff: morning briefs, "anything to act on before Friday", and draft replies to teachers. Its `vulcan-ask` client only reads the HTTP API (`/api/changes` and `/api/attendance` exist for it), so the agent never logs in, syncs, or sends anything. Install and permission rules are in its [README](skills/school-brief/README.md).
+
 ## Auto-login
 
 eduVulcan sessions expire after a few hours. For unattended runs, store your credentials and `sync` will re-authenticate headlessly. The macOS Keychain keeps them off disk:
