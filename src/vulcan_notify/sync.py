@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -20,6 +21,7 @@ from vulcan_notify.differ import (
     diff_schedule,
 )
 from vulcan_notify.drift import Drift, reconcile
+from vulcan_notify.mqtt import build_message_payload, build_payload
 
 if TYPE_CHECKING:
     from vulcan_notify.client import VulcanClient
@@ -516,6 +518,49 @@ async def detect_api_drift(client: VulcanClient, db: Database, run_id: int) -> l
         return []
 
 
+async def record_changes(
+    db: Database,
+    run_id: int,
+    student_results: list[SyncResult],
+    new_messages: list[Message],
+    is_first_message_sync: bool,
+) -> None:
+    """Log what this run reported, with the same payloads MQTT gets.
+
+    Same suppression as the outbox: a first sync is baseline, not news. Never raises,
+    because a broken change log must not fail a sync that fetched everything.
+    """
+    try:
+        for sr in student_results:
+            if sr.is_first_sync:
+                continue
+            for change in sr.all_changes:
+                await db.record_change(
+                    run_id,
+                    change.student_name,
+                    change.item_type,
+                    change.change_type,
+                    change.title,
+                    change.body,
+                    json.dumps(build_payload(change), ensure_ascii=False),
+                )
+        if not is_first_message_sync:
+            for msg in new_messages:
+                payload = build_message_payload(msg)
+                await db.record_change(
+                    run_id,
+                    None,
+                    "message",
+                    "new",
+                    str(payload["title"]),
+                    msg.subject,
+                    json.dumps(payload, ensure_ascii=False),
+                )
+        await db.commit()
+    except Exception:
+        logger.exception("Recording changes failed")
+
+
 async def sync_all(
     client: VulcanClient,
     db: Database,
@@ -578,6 +623,7 @@ async def sync_all(
             logger.error("Sync degraded: %d section failure(s): %s", errors, detail)
 
         drifts = await detect_api_drift(client, db, run_id)
+        await record_changes(db, run_id, student_results, new_messages, is_first_msg)
 
         await db.complete_sync_run(run_id, status, len(students), items, errors, detail)
 

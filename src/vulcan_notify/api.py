@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import calendar
+import json
 import logging
+import re
 import sqlite3
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -728,6 +730,170 @@ def _get_messages(n: int = 20) -> list[dict[str, Any]]:
     return messages
 
 
+_RELATIVE_SINCE = re.compile(r"^(\d+)([mhd])$")
+_SINCE_UNITS = {"m": "minutes", "h": "hours", "d": "days"}
+# Payload keys that duplicate the row's own columns.
+_CHANGE_ENVELOPE_KEYS = ("student", "title", "message", "timestamp")
+
+
+def _parse_since(raw: str | None, now: datetime) -> datetime:
+    """`7d`, `12h`, `30m`, or an ISO timestamp, as naive UTC like `changes.detected_at`.
+
+    A naive ISO value is taken as UTC. Default is the last 24 hours.
+    """
+    if not raw:
+        return now - timedelta(hours=24)
+    match = _RELATIVE_SINCE.match(raw)
+    if match:
+        return now - timedelta(**{_SINCE_UNITS[match[2]]: int(match[1])})
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        raise ValueError(f"since must be like 7d, 12h, 30m, or ISO 8601, got {raw!r}") from None
+    if parsed.tzinfo:
+        parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+    return parsed
+
+
+def _get_changes(
+    since: str | None = None,
+    student_filter: str | None = None,
+    types: list[str] | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Changes detected by syncs since a point in time, newest first.
+
+    Mirrors what MQTT pushed, minus first-sync baselines. Messages are account-wide
+    (`student` null) and are kept when filtering by student, since they usually
+    concern one.
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    start = _parse_since(since, now)
+    limit = max(1, min(limit, 1000))
+
+    sql = (
+        "SELECT id, detected_at, student, item_type, change_type, title, body, payload "
+        "FROM changes WHERE detected_at >= ?"
+    )
+    params: list[object] = [start.strftime("%Y-%m-%d %H:%M:%S")]
+    if student_filter:
+        sql += " AND (student = ? OR student IS NULL)"
+        params.append(student_filter)
+    if types:
+        sql += f" AND item_type IN ({','.join('?' * len(types))})"
+        params.extend(types)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit + 1)
+
+    db = _connect()
+    try:
+        rows = db.execute(sql, params).fetchall()
+    except sqlite3.OperationalError:
+        # Table not created yet: the API container can start before the first sync.
+        rows = []
+    finally:
+        db.close()
+
+    changes = []
+    for r in rows[:limit]:
+        details = {
+            k: v for k, v in json.loads(r["payload"]).items() if k not in _CHANGE_ENVELOPE_KEYS
+        }
+        changes.append(
+            {
+                "id": r["id"],
+                "detected_at": f"{r['detected_at'].replace(' ', 'T')}+00:00",
+                "student": r["student"],
+                "type": r["item_type"],
+                "change": r["change_type"],
+                "title": r["title"],
+                "body": r["body"],
+                "details": details,
+            }
+        )
+
+    return {
+        "since": f"{start.isoformat(timespec='seconds')}+00:00",
+        "until": f"{now.isoformat(timespec='seconds')}+00:00",
+        "count": len(changes),
+        "truncated": len(rows) > limit,
+        "changes": changes,
+    }
+
+
+# kategoriaFrekwencji. 5-7 occur in production but their meaning is not confirmed.
+_ATTENDANCE_LABELS = {1: "present", 2: "absent", 3: "late", 4: "excused"}
+
+
+def _attendance_label(category: int) -> str:
+    return _ATTENDANCE_LABELS.get(category, f"category_{category}")
+
+
+def _get_attendance(
+    student_filter: str | None = None,
+    days: int = 30,
+    include_present: bool = False,
+) -> dict[str, Any]:
+    """Attendance per student over the last `days`, newest first.
+
+    Present lessons are counted in `summary` but listed only with `include_present`:
+    they are ~97% of rows and bury the absences a reader is looking for.
+    `excuse_status` is the raw Usprawiedliwienia status of an excuse covering the
+    lesson (or its whole day), null when none was submitted.
+    """
+    db = _connect()
+    result: dict[str, Any] = {}
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    query = "SELECT key, name, class_name FROM students WHERE active = 1"
+    params: tuple[str, ...] = ()
+    if student_filter:
+        query += " AND name = ?"
+        params = (student_filter,)
+
+    for s in db.execute(query, params).fetchall():
+        rows = db.execute(
+            "SELECT a.date, a.lesson_number, a.category, a.subject, a.teacher, a.time_from, "
+            "(SELECT e.status FROM excuses e WHERE e.student_key = a.student_key "
+            " AND substr(e.date, 1, 10) = substr(a.date, 1, 10) "
+            " AND (e.lesson_number = a.lesson_number OR e.lesson_number IS NULL) "
+            " LIMIT 1) AS excuse_status "
+            "FROM attendance a WHERE a.student_key = ? AND substr(a.date, 1, 10) >= ? "
+            "ORDER BY a.date DESC, a.lesson_number DESC",
+            (s["key"], cutoff),
+        ).fetchall()
+
+        summary: dict[str, int] = {}
+        records = []
+        for r in rows:
+            label = _attendance_label(r["category"])
+            summary[label] = summary.get(label, 0) + 1
+            if r["category"] == 1 and not include_present:
+                continue
+            records.append(
+                {
+                    "date": r["date"][:10],
+                    "lesson_number": r["lesson_number"],
+                    "time_from": r["time_from"][11:16] if r["time_from"] else None,
+                    "subject": r["subject"],
+                    "teacher": r["teacher"],
+                    "category": label,
+                    "category_id": r["category"],
+                    "excuse_status": r["excuse_status"],
+                }
+            )
+        result[s["name"]] = {
+            "class": s["class_name"],
+            "days": days,
+            "summary": summary,
+            "records": records,
+            "count": len(records),
+        }
+
+    db.close()
+    return result
+
+
 async def handle_grades_average(request: web.Request) -> web.Response:
     student = request.query.get("student")
     window = int(request.query.get("window", "30"))
@@ -885,6 +1051,25 @@ async def handle_exams(request: web.Request) -> web.Response:
     return _with_meta(_get_exams(student, days), "exams")
 
 
+async def handle_changes(request: web.Request) -> web.Response:
+    raw_types = request.query.get("type")
+    types = [t.strip() for t in raw_types.split(",") if t.strip()] if raw_types else None
+    payload = _get_changes(
+        request.query.get("since"),
+        request.query.get("student"),
+        types,
+        int(request.query.get("limit", "200")),
+    )
+    return _with_meta(payload, *_SECTIONS)
+
+
+async def handle_attendance(request: web.Request) -> web.Response:
+    student = request.query.get("student")
+    days = int(request.query.get("days", "30"))
+    include_present = request.query.get("include_present", "").lower() in ("1", "true", "yes")
+    return _with_meta(_get_attendance(student, days, include_present), "attendance")
+
+
 async def handle_alive(request: web.Request) -> web.Response:
     """Pure liveness: is this process serving HTTP at all?
 
@@ -925,6 +1110,8 @@ def create_app() -> web.Application:
     app.router.add_get("/api/homework", handle_homework)
     app.router.add_get("/api/messages", handle_messages)
     app.router.add_get("/api/exams", handle_exams)
+    app.router.add_get("/api/attendance", handle_attendance)
+    app.router.add_get("/api/changes", handle_changes)
     app.router.add_get("/api/health", handle_health)
     app.router.add_get("/api/alive", handle_alive)
     return app
