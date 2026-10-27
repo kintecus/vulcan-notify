@@ -253,9 +253,13 @@ Homework detail. Returns description, teacher, attachments, and student response
 }
 ```
 
-### GET /api/SprawdzianyZadaniaDomowe?key={key}
+### GET /api/SprawdzianyZadaniaDomowe?key={key}&dataOd={isoDate}&dataDo={isoDate}
 
-**Gone: returns HTTP 404 as of 2026-10-27**, with and without a date range. Previously a calendar view combining exams and homework for the "Sprawdziany i zadania domowe" page. The page still exists in the SPA, so it has moved to an endpoint not yet identified. Nothing here depended on it.
+Calendar view combining exams and homework, used by the "Sprawdziany i zadania domowe" page. **`dataOd`/`dataDo` are required**: without them it returns HTTP 404, which is easy to misread as the endpoint being gone. Not synced.
+
+```json
+[{"id": 123, "typ": 1, "przedmiotNazwa": "Matematyka", "data": "2026-11-03T00:00:00+01:00", "hasAttachment": false}]
+```
 
 ### GET /api/WiadomosciNieodczytane
 
@@ -542,17 +546,47 @@ The SPA bundle (`uonetplus-cdn.vulcan.net.pl/AppCdn/EduVulcanUczen/Scripts/prodb
 
 | View | Synced | Notes |
 |------|--------|-------|
-| `Oceny`, `Frekwencja`, `PlanZajec`, `SprawdzianyZadaniaDomowe`, `Tablica` | yes | Core sections |
-| `PochwalyUwagi` | partly | `Uwagi` endpoint; praise source unknown |
-| `Zebrania` | no | Parent-teacher meetings. Endpoint not identified |
-| `Osiagniecia` | no | Achievements |
-| `ZgloszoneNieobecnosci` (store) | no | Absences reported by the parent |
-| `EwidencjaObecnosci` | no | Presence register |
-| `RealizacjaZajec` | no | Lesson topics covered |
-| `Jadlospis` | no | Lunch menu |
-| `SzkolaOplaty`, `SzkolaFormularze`, `SzkolaInformacje`, `SzkolaNauczyciele`, `Podreczniki`, `DaneUcznia` | no | School admin and reference pages |
+| View | Endpoint(s) | Synced |
+|------|-------------|--------|
+| `Oceny`, `Frekwencja`, `PlanZajec`, `Tablica` | see above | yes |
+| `SprawdzianyZadaniaDomowe` | `SprawdzianyZadaniaDomowe` (needs dates) | no (exams and homework come from the `*Tablica` endpoints) |
+| `PochwalyUwagi` | `Uwagi` | yes (schema unknown) |
+| `Zebrania` | `Zebrania` | no |
+| `Osiagniecia` | `Osiagniecia` | no |
+| `Frekwencja` (reported absences) | `ZgloszoneNieobecnosci`, `ZglaszanieNieobecnosciKonfiguracja` | no |
+| `Jadlospis` | `Jadlospis` (dates), `JadlospisTablica` | no |
+| `SzkolaInformacje` | `Informacje` | no |
+| `SzkolaNauczyciele` | `Nauczyciele` | no |
+| `SzkolaFormularze` | `FormularzeSzablony`, `FormularzWysylanie` | no |
+| `SzkolaOplaty` | `Oplaty` | no, deliberately: carries bank account numbers |
+| `EwidencjaObecnosci`, `RealizacjaZajec` | not reached: no menu entry for this school | no |
 
-Finding the endpoints behind the unsynced views needs a DevTools pass on the live site; guessing names from the view names did not work.
+Endpoints were identified on 2026-10-27 by driving the SPA in Chrome with Playwright and recording `/api/` traffic (paths, parameter names, and response structure only). Logging in from a separate browser does not disturb an existing session; the production session stayed valid throughout.
+
+### Endpoints found by the browser session
+
+Parameters are `key` only unless listed. Shapes are observed structure; examples are illustrative.
+
+| Endpoint | Shape | Notes |
+|----------|-------|-------|
+| `Zebrania` | `[{id, dataCzas, temat, agenda, sala, obecniNaZebraniu, zebranieOnline}]` | Parent-teacher meetings. Had real entries |
+| `SzczesliwyNumerTablica` | `{id, numer}` | Today's "lucky number" (the student with this register number is exempt from being called on). The SPA also POSTs to it (204) |
+| `WazneDzisiajTablica` | `[]` | "Important today". Empty so far |
+| `EgzaminyKoncoweTablica` | `[]` | Final exams. Empty so far |
+| `AnkietyTablica` | `[]` | Surveys. Empty so far |
+| `InformacjeTablica` | `[]` | Dashboard notices. Empty so far |
+| `DyzurniTablica` | `[{id, imie, nazwisko}]` | Students on duty |
+| `ZdjecieTablica` | `{status}` | Student photo status |
+| `Osiagniecia` | `[]` | Achievements. Empty so far |
+| `ZgloszoneNieobecnosci` | `[]`; params `dataOd`, `dataDo` | Absences reported by the parent |
+| `ZglaszanieNieobecnosciKonfiguracja` | `{rodzicMozeZglaszac, dniPrzed, doGodziny, uwzgledniacDniWolne}` | Whether and until when a parent may report an absence |
+| `Jadlospis` | `[]`; params `dataOd`, `dataDo` | Lunch menu. Empty for this school |
+| `Informacje` | `{nazwa, numer, imienia, dyrektor, ulica, nrDomu, ..., mail, stronaWwwUrl}` | School details |
+| `Nauczyciele` | `{nauczyciele: [{imie, nazwisko, przedmiot, wychowawca, globalKeySkrzynka}]}` | Teachers with subjects and mailbox keys |
+| `FormularzeSzablony`, `FormularzWysylanie` | `[]` | Forms |
+| `Oplaty` | `{kontaBankowe: [...], oplaty: [...]}` | Fees, with bank account numbers |
+
+The SPA also POSTs to `StatystykiLogowan` (204) on load: login statistics. Don't imitate it.
 
 **Do not fetch the SPA root (`https://uczen.eduvulcan.pl/{tenant}/`) with the API session cookies.** Doing that during probing on 2026-10-27 was followed immediately by every API call returning `409 {"message":"Brak uprawnień."}`, and the saved session had to be replaced by a fresh login. Without cookies the root redirects to the login page, which only carries the portal's asset version (`?_=26.10.1.2474`), not the SPA bundle's.
 
@@ -574,4 +608,4 @@ Recommended approach:
 - ~~Pagination beyond the first page~~ Answered: yes, with an inclusive cursor (see `Odebrane`)
 - `status` values in `Usprawiedliwienia` (only 1 observed)
 - Item schemas for `Uwagi` and `OgloszeniaTablica` (never non-empty so far)
-- Where `SprawdzianyZadaniaDomowe` moved to
+- Date parameter format the SPA uses for `SprawdzianyZadaniaDomowe`, `Jadlospis`, and `ZgloszoneNieobecnosci` (only names were recorded)
