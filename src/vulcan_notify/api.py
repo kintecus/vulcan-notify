@@ -63,6 +63,7 @@ def _get_health() -> dict[str, Any]:
             r[0]: r[1]
             for r in db.execute("SELECT key, value FROM sync_state WHERE key LIKE 'last_success:%'")
         }
+        drift = _recent_drift(db)
     finally:
         db.close()
 
@@ -118,7 +119,34 @@ def _get_health() -> dict[str, Any]:
         },
         "sections": sections,
         "last_run": last_run,
+        "api_drift": drift,
         "generated_at": now.isoformat(),
+    }
+
+
+_DRIFT_WINDOW_DAYS = 14
+
+
+def _recent_drift(db: sqlite3.Connection) -> dict[str, Any] | None:
+    """Upstream API changes seen in the last two weeks.
+
+    Informational: drift does not change `status`. The data may still be fine, and a
+    503 here would page pve-healthcheck for something only a code change can fix.
+    """
+    try:
+        rows = db.execute(
+            "SELECT detected_at, endpoint, kind, path, detail FROM api_drift "
+            "WHERE detected_at >= datetime('now', ?) ORDER BY id DESC",
+            (f"-{_DRIFT_WINDOW_DAYS} days",),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Table not created yet: the API container can start before the first sync.
+        return None
+    return {
+        "window_days": _DRIFT_WINDOW_DAYS,
+        "count": len(rows),
+        "last_detected_at": rows[0]["detected_at"] if rows else None,
+        "recent": [dict(r) for r in rows[:10]],
     }
 
 

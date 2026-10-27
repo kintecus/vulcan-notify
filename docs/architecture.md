@@ -58,14 +58,15 @@ cron --> sync
 
 ## Pipeline
 
-The CLI always follows the same six-phase pipeline:
+The CLI always follows the same seven-phase pipeline:
 
 | Phase | Module | Entry point | Role |
 |-------|--------|-------------|------|
 | Auth | `auth.py` | `get_session()` | Load cookies; open Playwright for interactive login on first run or after expiry. Fall back to headless re-auth if credentials are available. |
-| Fetch | `client.py` | `VulcanClient` methods | Pull students, grades (all periods), attendance (last N days), exams, homework (full body), messages, lesson schedule with substitutions. |
+| Fetch | `client.py` | `VulcanClient` methods | Pull students, grades (all periods), attendance (last N days), exams, homework (full body), messages (paged, with history backfill), lesson schedule with substitutions, days off, excuses, remarks, announcements. Records each response's structure for drift detection. |
 | Diff | `differ.py` | `diff_*` | Produce `Change` objects by comparing fetched data to the DB. |
 | Persist | `db.py` | `Database.upsert_*` | Apply `ON CONFLICT ... DO UPDATE` upserts; soft-delete removed exams/homework. |
+| Drift | `drift.py`, `sync.py` | `detect_api_drift()` | Compare response structure and section item counts against what was learned; record and report changes. |
 | Publish | `display.py`, `calendar.py`, `mqtt.py` | Fan-out | Print to terminal, sync macOS Calendar events, enqueue + publish MQTT messages. |
 | Serve | `api.py` (separate process/command) | aiohttp app | Expose HTTP endpoints and iCalendar feeds over the same SQLite. |
 
@@ -75,13 +76,14 @@ On first sync for a student, every item is treated as baseline: stored silently,
 
 | File | Responsibility | Key symbols |
 |------|----------------|-------------|
-| `__main__.py` | CLI entry. Dispatches subcommands: `auth`, `test`, `sync`, `calendar`, `tui`, `summarize`. | `main()` |
+| `__main__.py` | CLI entry. Dispatches subcommands: `auth`, `test`, `sync`, `heartbeat`, `calendar`, `tui`, `summarize`, `shapes`. | `main()` |
 | `config.py` | `pydantic-settings` singleton loaded from `.env` + env vars. | `Settings`, `settings` |
 | `auth.py` | Playwright browser + headless login; cookie jar persistence; macOS Keychain fallback. | `get_session()`, `cookies_for_url()` |
 | `client.py` | aiohttp wrapper over the eduVulcan web API. Detects HTML responses as expired-session sentinel. | `VulcanClient` |
-| `models.py` | Dataclasses for API responses: `Student`, `Grade`, `AttendanceEntry`, `Exam`, `Homework`, `Message`, `Lesson`. | — |
+| `models.py` | Dataclasses for API responses: `Student`, `Grade`, `AttendanceEntry`, `Exam`, `Homework`, `Message`, `Lesson`, `DayOff`, `Excuse`, `FeedItem`. | — |
 | `sync.py` | Orchestrates one full sync run per student; writes a `sync_runs` row; fans out to channels. | `sync_all()`, `SyncResult` |
-| `differ.py` | Detects new/updated/deleted items. Returns `Change` dataclasses. | `diff_grades`, `diff_attendance`, `diff_exams`, `diff_homework`, `diff_messages`, `diff_schedule` |
+| `differ.py` | Detects new/updated/deleted items. Returns `Change` dataclasses. | `diff_grades`, `diff_attendance`, `diff_exams`, `diff_homework`, `diff_schedule`, `diff_days_off`, `diff_excuses`, `diff_feed` |
+| `drift.py` | Structural fingerprints of API responses (key paths + types, never values) and the rules that turn a changed fingerprint into a drift event. | `extract()`, `reconcile()`, `synthesize()` |
 | `db.py` | Async SQLite persistence via aiosqlite. All writes are `ON CONFLICT ... DO UPDATE`. | `Database` |
 | `display.py` | Terminal output with ANSI colors (auto-disabled when piped). | `format_result()` |
 | `calendar.py` | macOS Calendar integration via AppleScript. Dedup by stored UID; soft-deleted items remove events. | `sync_calendar()` |
@@ -104,9 +106,14 @@ SQLite lives at `DB_PATH` (default `vulcan_notify.db`). Tables:
 | `messages` | `id` with `UNIQUE(api_global_key)` | `content` is backfilled in batches of `SYNC_MESSAGE_BACKFILL_BATCH` per run for legacy rows. |
 | `schedule` | `(student_key, date, time_from, subject)` | Per-lesson schedule including substitutions (`sub_teacher`, `sub_room`), cancellations (`annotation`), and extra lessons (`is_extra`). |
 | `mqtt_outbox` | `id` AUTOINCREMENT | Every MQTT publish is enqueued first; drained on each run. Broker outages survive restarts. |
-| `sync_state` | `key` | Generic KV. Holds `last_sync:<student>` (has this student ever synced — drives first-sync suppression) and `last_success:<student>:<section>` (freshness, written only after a confirmed fetch). The two are deliberately separate. |
+| `sync_state` | `key` | Generic KV. Holds `last_sync:<student>` (has this student ever synced — drives first-sync suppression), `last_success:<student>:<section>` (freshness, written only after a confirmed fetch), `baseline:<student>:<section>` (per-section baseline for sections added after a student's first sync), and the `messages_history_*` backfill cursor. |
 | `sync_runs` | `id` AUTOINCREMENT | History of runs: `completed`, `degraded` (a section failed), `failed`, or `interrupted` (abandoned mid-run, reconciled on the next start). Pruned past `SYNC_HISTORY_KEEP_DAYS`. |
 | `sync_sections` | `id` AUTOINCREMENT | Per-section, per-student outcome for each run, with item counts and error detail. Without it a partial outage — grades broken, everything else fine — is invisible. |
+| `days_off` | `(student_key, date_from, name)` | School holidays and closures from `DniWolne`, current school year. Also suppresses empty-section drift alerts over breaks. |
+| `excuses` | `(student_key, id)` | Absence excuses per lesson from `Usprawiedliwienia`, with `status`. |
+| `feed_items` | `(student_key, kind, item_key)` | Remarks (`Uwagi`) and announcements (`OgloszeniaTablica`). Neither has returned an item yet, so the raw JSON is stored next to best-effort text. |
+| `api_shapes` | `(endpoint, path)` | Learned response structure per endpoint: key path, types seen, and whether the key is currently missing. No values. |
+| `api_drift` | `id` AUTOINCREMENT | Every drift event detected, with the run it came from. |
 
 The full entity diagram (students + primary entities) is in the [README](../README.md#database-schema).
 
@@ -119,8 +126,31 @@ The full entity diagram (students + primary entities) is in the [README](../READ
 - **Exams / homework** — keyed by upstream `id`. Disappearance → soft-delete (`deleted_at` set, calendar event removed).
 - **Messages** — keyed by `api_global_key`. Content is pulled lazily; the MQTT payload for a newly-appeared message includes the body once fetched.
 - **Schedule** — keyed by `(date, time_from, subject)`. Three independent change types are emitted: `substitution` (teacher/room swap), `cancellation` (annotation flag set), `addition` (is_extra lesson inserted).
+- **Days off** — keyed by `(date_from, name)`. New entry → `new`.
+- **Excuses** — keyed by upstream id. Only a status change is reported (`updated`); a new excuse is the parent's own submission.
+- **Remarks / announcements** — keyed by upstream `id`, or a hash of the item when there is none. New item → `new`.
 
-First sync for a student writes a `sync_state` marker and suppresses all changes, so new installs don't flood channels with backlog noise.
+First sync for a student writes a `sync_state` marker and suppresses all changes, so new installs don't flood channels with backlog noise. Sections added later (days off, excuses, remarks, announcements) baseline the same way on their own first success.
+
+Messages page backwards while a whole page is new, so more than 50 messages between syncs are not silently skipped. Separately, a few older pages per run (`SYNC_MESSAGE_HISTORY_PAGES`) are walked until the oldest message is stored. Those are history: stored, never published.
+
+## API drift detection
+
+The client parses with `.get(key, default)`, so a renamed upstream field does not raise. It becomes an empty string or an empty list, and the section still reports healthy. `drift.py` watches response structure instead.
+
+Every JSON response passing through `VulcanClient._fetch` is reduced to its key paths and value types (`$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].wpis: string`) and merged per endpoint. Object keys that look like data (ids, dates, UUIDs) collapse to `*`. At the end of a run `detect_api_drift()` reconciles each endpoint against `api_shapes`:
+
+| Kind | Fires when |
+|------|-----------|
+| `added` | A new key appears under an object whose children were already known. |
+| `missing` | A known key is absent while its parent object is present. Vulcan serializes nulls rather than omitting keys, so absence means the key is gone. Reported once, until it returns. |
+| `type_changed` | A path gets a non-null type it never had. |
+| `now_null` | A path that was never null comes back null in every item. |
+| `empty` | `grades` or `messages` return 0 items after 3 non-zero runs; `attendance` or `schedule` likewise, unless today is a stored day off. |
+
+An endpoint's first sighting is learned silently, and so are children of a parent that was only ever null or an empty array. Drift is recorded in `api_drift`, logged as a warning, published to `<prefix>/system/api/drift`, and summarized in `/api/health` under `api_drift`. It never changes the health status: the data may still be fine, and a 503 would page for something only a code change fixes.
+
+`vulcan-notify shapes` prints the learned structure as JSON. It holds no values, so it is safe to copy off the server, and it is what `tests/fixtures/shapes.json` is refreshed from.
 
 ## Notification channels
 
@@ -138,7 +168,9 @@ Optional (`MQTT_ENABLED=true`). Every `Change` is enqueued in `mqtt_outbox` insi
 
 **Topic scheme:** `<MQTT_TOPIC_PREFIX>/<student-slug>/<segment>/<change_type>`
 
-- `<segment>` maps item types to plural names: `grades`, `exams`, `homework`, `substitutions`, `cancellations`, `additions`, `messages`.
+- `<segment>` maps item types to plural names: `grades`, `exams`, `homework`, `substitutions`, `cancellations`, `additions`, `messages`, `days_off`, `excuses`, `remarks`, `announcements`.
+- Days off and announcements that every student received identically are published once under `<prefix>/all/<segment>/new`, with `student` set to all the names joined.
+- API drift goes to `<prefix>/system/api/drift` with no `student` key. Four levels, so the `school/+/+/+` push automation forwards it unchanged.
 - `<change_type>` is `new`, `updated`, or `alert` (attendance is always `alert`).
 - Message topics use the mailbox slug instead of student slug (`<prefix>/<mailbox>/messages/new`).
 

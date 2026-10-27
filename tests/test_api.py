@@ -541,3 +541,27 @@ def test_month_list_relative_mode() -> None:
     out = api_mod._month_list(None, months=3)
     assert len(out) == 3
     assert out == sorted(out)
+
+
+async def test_health_reports_recent_drift(seeded_db: Path) -> None:
+    from vulcan_notify.drift import Drift
+
+    db = Database(seeded_db)
+    await db.connect()
+    run_id = await db.create_sync_run()
+    drift = Drift("uczen:Oceny", "missing", "$.x", "key no longer returned")
+    await db.record_drifts([drift], run_id)
+    await db.commit()
+    await db.close()
+
+    drift = api_mod._get_health()["api_drift"]
+    assert drift["count"] == 1
+    assert drift["recent"][0]["endpoint"] == "uczen:Oceny"
+
+
+def test_health_survives_missing_drift_table(tmp_path: Path) -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(tmp_path / "bare.db")
+    assert api_mod._recent_drift(conn) is None
+    conn.close()
