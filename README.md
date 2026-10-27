@@ -1,218 +1,170 @@
 # vulcan-notify
 
 > [!TIP]
-> ✨ ***Push notifications, calendars, and dashboards from a school e-journal that refuses to give them to you.***
+> ***Push notifications, calendars, and dashboards from the eduVulcan school e-journal.***
 
-CLI tool that syncs data from the eduVulcan school e-journal to a local SQLite database, detects changes between runs, and fans them out to a terminal, macOS Calendar, an MQTT broker, and an HTTP/iCalendar API.
+Syncs the eduVulcan web API to a local SQLite database and diffs each run against the last one. Any changes go out to the terminal, macOS Calendar, MQTT, and an HTTP/iCalendar API, so Home Assistant (or anything else) can react to school events as they happen.
 
-Solves the problem of eduVulcan paywalling push notifications behind a subscription, while the web version (which is legally required to remain free) has no notification support. Also exposes a local HTTP + MQTT surface so Home Assistant (or anything else) can react to school events in real time.
+**Tracks** grades, attendance, exams, homework, messages (with an optional sender whitelist), and lesson substitutions/cancellations. It handles multiple students under one parent account.
 
-> [!NOTE]
-> [📦 Installation](#installation) · [⚡ Commands](#commands) · [⚙️ How it works](#how-it-works) · [🏠 Home Assistant integration](#home-assistant-integration) · [🔐 Auto-login](#auto-login) · [📅 Calendar integration](#calendar-integration) · [🔧 Configuration](#configuration) · [📚 Documentation](#documentation)
+**Exposes** terminal output, macOS Calendar events, MQTT events with a persistent outbox, a JSON API on `:8585`, a per-student `.ics` feed, and optional AI digests via any OpenAI-compatible API.
 
-## What it tracks
-
-- **Grades** - new and changed, with subject, teacher, category, and weight
-- **Attendance** - absences and late arrivals
-- **Exams** - upcoming tests and quizzes, with description and teacher
-- **Homework** - upcoming assignments, with full description
-- **Messages** - unread count and body, with optional sender whitelist filtering
-- **Lesson schedule** - substitutions, cancellations, and extra lessons
-
-Supports multiple students under one parent account.
-
-## What it exposes
-
-- **Terminal output** - colored when interactive, plain when piped
-- **macOS Calendar** - exams and homework as all-day events with reminders (iCloud syncs to iOS)
-- **MQTT events** - every detected change published to Mosquitto (with a persistent outbox for retries)
-- **HTTP API** - grade aggregates, homework, messages, and schedule over aiohttp on port 8585
-- **iCalendar feed** - per-student `.ics` feed for subscribing from iOS/macOS Calendar, Google Calendar, or Home Assistant
-- **AI summaries** - optional digest of recent changes or messages via any OpenAI-compatible API
-
-## 📦 Installation <a name="installation"></a>
-
-**Requirements:** Python 3.12+, [uv](https://docs.astral.sh/uv/) package manager
-
-```bash
-git clone https://github.com/yourname/vulcan-notify.git
-cd vulcan-notify
-uv sync
-
-# Install Playwright browsers (needed for auth)
-uv run playwright install chromium
-
-# Configure (optional)
-cp .env.example .env
-# Edit .env to set MESSAGE_SENDER_WHITELIST, MQTT_*, CALENDAR_MAP, etc.
-
-# Authenticate with eduVulcan (opens browser)
-uv run vulcan-notify auth
-
-# Test session validity
-uv run vulcan-notify test
-
-# Sync data and see changes
-uv run vulcan-notify sync
-```
-
-## ⚡ Commands <a name="commands"></a>
-
-| Command | Description |
-|---------|-------------|
-| `vulcan-notify auth` | Interactive browser login, saves session cookies |
-| `vulcan-notify test` | Test if saved session is still valid |
-| `vulcan-notify sync` | Fetch latest data and show changes (default) |
-| `vulcan-notify calendar` | Force re-sync all exams/homework to macOS Calendar |
-| `vulcan-notify tui` | Interactive Textual browser for synced content (requires `uv sync --extra tui`) |
-| `vulcan-notify summarize [--type sync\|messages] [--days N]` | AI summary of recent changes or messages (requires `LLM_API_KEY`) |
-
-## ⚙️ How it works <a name="how-it-works"></a>
-
-End-to-end flow from the eduVulcan API down to a push notification on your phone and a tile on your Home Assistant dashboard:
+## How it works
 
 ```mermaid
-%%{init: {'theme':'base','flowchart':{'curve':'basis','nodeSpacing':50,'rankSpacing':60}}}%%
-flowchart TB
-    accTitle: vulcan-notify end-to-end flow
-    accDescr: A scheduled sync pulls grades, attendance, exams, homework, messages, and schedule from eduVulcan. Changes are diffed against SQLite and fanned out to the terminal, macOS Calendar, MQTT, and an HTTP/iCalendar API. Home Assistant consumes MQTT events and the HTTP API to drive a school dashboard and push notifications. Both iCloud Calendar and HA push converge on the parent's phone.
+%%{init: {'theme':'base','flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':70,'htmlLabels':true}}}%%
+flowchart LR
+    accTitle: vulcan-notify data flow
+    accDescr: A sync loop pulls data from the eduVulcan web API using saved cookies, renewed by a Playwright login. Changes are upserted into SQLite and queued in an MQTT outbox. Mosquitto and the HTTP API feed Home Assistant, which pushes notifications to the parent's phone. The iCalendar feed and optional macOS Calendar sync land events in iCloud Calendar.
 
-    Vulcan([uczen.eduvulcan.pl])
+    Vulcan([eduVulcan<br/>web API])
+    Auth[[Playwright login]]
 
-    subgraph Daemon[vulcan-notify daemon]
+    subgraph Daemon[vulcan-notify]
         direction TB
-        Cron[/cron · timer/] --> Sync(sync)
-        Auth[[auth · Playwright]] -.->|cookies| Sync
-        Sync --> Differ{New or<br/>changed?}
-        Differ --> DB[(SQLite)]
-        Differ --> Fanout{{fan-out}}
-        Fanout --> DB
-        Fanout --> Term[/terminal/]
-        Fanout --> CalSync[calendar sync]
-        Fanout --> Outbox[(MQTT outbox)]
-        API[api · aiohttp :8585] --> DB
+        Loop{{sync loop}}
+        Diff{new or<br/>changed?}
+        DB[(SQLite)]
+        Outbox[(MQTT outbox)]
+        API(HTTP API :8585)
     end
 
-    subgraph HA[Home Assistant]
+    subgraph Consumers[Home Assistant and calendars]
         direction TB
-        Mosq[(Mosquitto)] --> Sensors[REST + MQTT sensors]
-        Sensors --> Dash[School dashboard]
-        Sensors --> Auto{{Automations}}
-        Auto --> Push[/Push notification/]
+        Mosq[(Mosquitto)]
+        HA{{Home Assistant}}
+        Cal[(iCloud Calendar)]
     end
 
     Phone([Parent phone])
 
-    Sync <-->|HTTPS · JSON| Vulcan
-    CalSync -->|AppleScript| iCloud[(iCloud Calendar)]
+    Auth -.->|cookies| Loop
+    Vulcan -->|HTTPS · JSON| Loop
+    Loop --> Diff
+    Diff -->|upsert| DB
+    Diff -->|enqueue| Outbox
+    DB --> API
     Outbox -->|school/#| Mosq
-    API -->|REST polling| Sensors
-    API -->|/calendar/<name>.ics| iCloud
-    iCloud --> Phone
-    Push --> Phone
+    Mosq --> HA
+    API -->|REST sensors| HA
+    API -->|.ics feed| Cal
+    Diff -.->|AppleScript<br/>macOS only| Cal
+    HA -->|push| Phone
+    Cal --> Phone
 
     classDef storage fill:#ecfdf5,stroke:#16a34a,color:#064e3b;
     classDef external fill:#fef3c7,stroke:#d97706,color:#78350f;
     classDef actor fill:#eef2ff,stroke:#4f46e5,color:#312e81;
-    class DB,Outbox,Mosq,iCloud storage;
-    class Vulcan external;
+    class DB,Outbox,Mosq,Cal storage;
+    class Vulcan,Auth external;
     class Phone actor;
+    style Daemon fill:#f8fafc,stroke:#94a3b8
+    style Consumers fill:#f8fafc,stroke:#94a3b8
 
     linkStyle default stroke:#64748b,stroke-width:1.5px
-    linkStyle 14 stroke:#2563eb,stroke-width:2px
+    linkStyle 1,2,6,7,8,9 stroke:#2563eb,stroke-width:2px
     linkStyle 3,4,5 stroke:#16a34a,stroke-width:2px
-    linkStyle 15,16,17,18 stroke:#ea580c,stroke-width:2px
-    linkStyle 12,13 stroke:#9333ea,stroke-width:1.5px,stroke-dasharray: 4 3
+    linkStyle 11,12 stroke:#ea580c,stroke-width:2px
 ```
 
-1. **Auth** - Playwright opens a browser for you to log into eduvulcan.pl. After login, session cookies are saved locally. If login credentials are provided, expired sessions are renewed headlessly on subsequent runs.
-2. **Fetch** - The tool calls the eduVulcan web API directly (using saved cookies) to pull grades (all periods), attendance (last 90 days), exams, homework with full body, messages, and the lesson schedule including substitutions.
-3. **Diff** - Each item is compared against the local SQLite database. New or changed items are reported; exams and homework that disappear from the API are soft-deleted.
-4. **Persist** - All upserts are idempotent (`INSERT OR REPLACE`). Each run is recorded in a `sync_runs` table.
-5. **Publish** - Changes fan out in parallel: printed to the terminal, written to macOS Calendar (if configured), enqueued in the MQTT outbox and drained to Mosquitto (if configured). The outbox survives broker outages.
-6. **Serve** (separate command, long-running) - `vulcan-notify api` (via Docker or systemd service) exposes the HTTP + iCalendar endpoints backed by the same SQLite file.
+1. **Auth** - log in once in a Playwright browser to save session cookies. If credentials are stored, the tool renews expired sessions headlessly.
+2. **Fetch** - call the eduVulcan web API with those cookies: grades (all periods), attendance (last 90 days), exams, homework, messages, and the schedule.
+3. **Diff and persist** - compare against SQLite and upsert with `INSERT OR REPLACE`. Exams and homework that drop out of the API are soft-deleted. The first sync stores a baseline and reports nothing.
+4. **Publish** - print changes, write them to macOS Calendar, and drain the MQTT outbox to the broker. The outbox survives broker outages.
+5. **Serve** - a separate long-running process (`python -m vulcan_notify.api`) serves HTTP and iCalendar from the same SQLite file.
 
-On first sync, all existing data is stored without reporting changes (baseline). Only subsequent syncs show what's new.
+Module breakdown, schema, MQTT topic map, and endpoint reference: [`docs/architecture.md`](docs/architecture.md).
 
-For the full module breakdown, database schema, MQTT topic map, and HTTP endpoint reference, see [`docs/architecture.md`](docs/architecture.md).
+## Installation
 
-## 🏠 Home Assistant integration <a name="home-assistant-integration"></a>
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
-Production setup runs vulcan-notify as a Docker container on a Proxmox LXC, publishing MQTT events to the Mosquitto broker inside Home Assistant OS. Two ways to wire it up:
+```bash
+git clone https://github.com/kintecus/vulcan-notify.git
+cd vulcan-notify
+uv sync
+uv run playwright install chromium
 
-- **Event-driven (MQTT)** - subscribe to `school/#` and build sensors or automations. Topic scheme: `<prefix>/<student-slug>/<segment>/<change_type>`, e.g. `school/alice/grades/new`, `school/alice/exams/updated`, `school/alice/attendance/alert`, `school/alice/substitutions/new`. Payloads are structured JSON with the full change metadata.
-- **Pull-based (HTTP)** - HA's REST sensor polls `/api/grades/monthly`, `/api/messages`, `/api/schedule`, etc. for dashboards and history graphs. The iCalendar feed at `/calendar/<name>.ics` can be subscribed directly from any calendar client.
+cp .env.example .env            # optional, see Configuration
+uv run vulcan-notify auth       # opens a browser
+uv run vulcan-notify sync
+```
 
-See [`docs/architecture.md`](docs/architecture.md) for the full endpoint list, MQTT topic map, and payload examples. See [`docs/deployment.md`](docs/deployment.md) for the Proxmox/Docker/systemd setup.
+## Commands
 
-## 🔐 Auto-login <a name="auto-login"></a>
+| Command | Description |
+|---------|-------------|
+| `vulcan-notify auth` | Browser login, saves session cookies |
+| `vulcan-notify test` | Check whether the saved session is valid |
+| `vulcan-notify sync` | Fetch, diff, and publish changes (default) |
+| `vulcan-notify heartbeat` | Publish the retained MQTT heartbeat only, no sync |
+| `vulcan-notify calendar` | Force a clean re-sync of macOS Calendar events |
+| `vulcan-notify tui` | Textual browser for synced content (`uv sync --extra tui`) |
+| `vulcan-notify summarize [--type sync\|messages] [--days N]` | AI digest of recent changes or messages (needs `LLM_API_KEY`) |
 
-eduVulcan sessions expire after a few hours. To run fully unattended (e.g., on a home server with a cron job), store your credentials so the script re-authenticates automatically when a session expires.
+## Home Assistant
 
-**Option 1: macOS Keychain** (recommended, no plaintext on disk)
+In production, vulcan-notify runs in Docker on a Proxmox LXC as two services: the sync loop and the API. It publishes to the Mosquitto add-on in Home Assistant OS.
+
+- **MQTT (event-driven)** - topics follow `<prefix>/<student>/<segment>/<change_type>`, e.g. `school/alice/grades/new` or `school/alice/substitutions/new`, with JSON payloads. A retained `school/status` heartbeat with an LWT lets HA detect a silent daemon.
+- **HTTP (pull-based)** - REST sensors poll `/api/grades/monthly`, `/api/messages`, `/api/schedule`, and others. `/api/health` returns 503 when data goes stale, and quiet hours don't count toward staleness. Any calendar client can subscribe to `/calendar/<name>.ics`.
+
+Setup: [`docs/deployment.md`](docs/deployment.md).
+
+## Auto-login
+
+eduVulcan sessions expire after a few hours. For unattended runs, store your credentials and `sync` will re-authenticate headlessly. The macOS Keychain keeps them off disk:
 
 ```bash
 security add-generic-password -s vulcan-notify -a your.email@example.com -w
-# Prompts for password interactively
 ```
 
-**Option 2: environment variables** - add to `.env`:
+Or set `VULCAN_LOGIN` and `VULCAN_PASSWORD` in `.env`.
 
-```
-VULCAN_LOGIN=your.email@example.com
-VULCAN_PASSWORD=your_password
-```
+## Calendar
 
-When credentials are available, `vulcan-notify sync` detects expired sessions and re-authenticates headlessly via Playwright - no manual browser interaction needed.
-
-## 📅 Calendar integration <a name="calendar-integration"></a>
-
-Push exams and homework to iCloud Calendar as all-day events with reminder alarms. Events sync to all devices via iCloud.
-
-Add to `.env`:
+Map each student to an existing macOS calendar:
 
 ```
 CALENDAR_MAP={"Alice Smith": "School Alice", "Bob Johnson": "School Bob"}
 ```
 
-The calendar names must match existing calendars in macOS Calendar. Each student maps to their own calendar.
+`sync` then writes exams and homework as all-day events with an alarm, and iCloud syncs them to your other devices. Event UIDs are stored in the database for deduplication. Soft-deleted items also lose their events.
 
-When configured, `vulcan-notify sync` automatically creates and updates calendar events. Use `vulcan-notify calendar` to force a clean re-sync of all events. Events are deduplicated by storing the macOS calendar UID in the database; when exams or homework are removed from the API (soft-deleted), their calendar events are also removed.
+## Configuration
 
-## 🔧 Configuration <a name="configuration"></a>
-
-All settings are via environment variables or `.env` file:
+Set these as environment variables or in `.env`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DB_PATH` | `vulcan_notify.db` | SQLite database path |
-| `SESSION_FILE` | `session.json` | Saved session cookies path |
-| `VULCAN_LOGIN` | (none) | eduVulcan login email for auto-login |
-| `VULCAN_PASSWORD` | (none) | eduVulcan password for auto-login |
-| `SYNC_ATTENDANCE_DAYS` | `90` | How many days back to sync attendance |
-| `SYNC_MESSAGE_BACKFILL_BATCH` | `10` | Legacy messages to refetch bodies for, per run |
-| `POLL_INTERVAL` | `1800` | Seconds between polls when run as a service |
-| `QUIET_HOURS_START` | `0` | Hour (0-23) to start quiet window, sync paused |
-| `QUIET_HOURS_END` | `5` | Hour (0-23) to end quiet window, sync resumes |
-| `QUIET_HOURS_TZ` | `Europe/Warsaw` | Zone the quiet window is read in. Not the container clock, which stays UTC |
-| `MESSAGE_SENDER_WHITELIST` | (empty) | Comma-separated sender names to filter messages |
-| `CALENDAR_MAP` | (empty) | JSON dict mapping student names to macOS calendar names |
-| `CALENDAR_REMINDER_HOURS` | `24` | Hours before event for calendar alarm |
+| `SESSION_FILE` | `session.json` | Saved session cookies |
+| `VULCAN_LOGIN` / `VULCAN_PASSWORD` | (none) | Credentials for headless re-auth |
+| `SYNC_ATTENDANCE_DAYS` | `90` | Attendance lookback window |
+| `SYNC_MESSAGE_BACKFILL_BATCH` | `10` | Legacy message bodies to refetch per run |
+| `SYNC_HISTORY_KEEP_DAYS` | `90` | Retention for sync run history |
+| `POLL_INTERVAL` | `1800` | Seconds between syncs in the service loop |
+| `QUIET_HOURS_START` / `QUIET_HOURS_END` | `0` / `5` | Hours (0-23) when syncing pauses |
+| `QUIET_HOURS_TZ` | `Europe/Warsaw` | Time zone for the quiet window (the container stays on UTC) |
+| `STALE_AFTER_SECONDS` | `3600` | Data age at which `/api/health` reports stale |
+| `MESSAGE_SENDER_WHITELIST` | (empty) | Comma-separated sender names, empty shows all |
+| `DISPLAY_NAME_MAP` | (empty) | JSON map of full name to nickname for notification titles |
+| `CALENDAR_MAP` | (empty) | JSON map of student name to macOS calendar |
+| `CALENDAR_REMINDER_HOURS` | `24` | Alarm lead time |
 | `MQTT_ENABLED` | `false` | Enable MQTT publishing |
-| `MQTT_BROKER` | `localhost` | Mosquitto hostname |
-| `MQTT_PORT` | `1883` | Mosquitto port |
-| `MQTT_USERNAME` | (none) | Optional MQTT auth |
-| `MQTT_PASSWORD` | (none) | Optional MQTT auth |
-| `MQTT_TOPIC_PREFIX` | `school` | Topic namespace root |
-| `NTFY_TOPIC` | `vulcan-notify` | ntfy.sh topic (if used) |
-| `NTFY_SERVER` | `https://ntfy.sh` | ntfy server base URL |
-| `LLM_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible API base URL for AI summaries |
-| `LLM_API_KEY` | (none) | API key for AI summaries (disabled if unset) |
-| `LLM_MODEL` | `gpt-oss-120b` | Model name for AI summaries |
+| `MQTT_BROKER` / `MQTT_PORT` | `localhost` / `1883` | Broker address |
+| `MQTT_USERNAME` / `MQTT_PASSWORD` | (none) | Broker auth |
+| `MQTT_TOPIC_PREFIX` | `school` | Topic root |
+| `MQTT_STATUS_SUFFIX` | `status` | Retained heartbeat topic under the prefix |
+| `LLM_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible endpoint for summaries |
+| `LLM_API_KEY` | (none) | Enables summaries |
+| `LLM_MODEL` | `gpt-oss-120b` | Summary model |
+| `PROMPTS_FILE` | `prompts.toml` | Summary prompt templates |
+| `NTFY_TOPIC` / `NTFY_SERVER` | `vulcan-notify` / `https://ntfy.sh` | ntfy target for deploy notifications |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
-## 📚 Documentation <a name="documentation"></a>
+## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) - internal architecture, pipeline, database schema, MQTT payloads, endpoint reference
-- [`docs/deployment.md`](docs/deployment.md) - Docker + Proxmox LXC + systemd setup
+- [`docs/architecture.md`](docs/architecture.md) - pipeline, schema, MQTT payloads, endpoints
+- [`docs/deployment.md`](docs/deployment.md) - Docker, Proxmox LXC, and systemd
 - [`docs/eduvulcan-api.md`](docs/eduvulcan-api.md) - reverse-engineered eduVulcan web API reference
