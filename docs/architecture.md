@@ -114,6 +114,7 @@ SQLite lives at `DB_PATH` (default `vulcan_notify.db`). Tables:
 | `feed_items` | `(student_key, kind, item_key)` | Remarks (`Uwagi`) and announcements (`OgloszeniaTablica`). Neither has returned an item yet, so the raw JSON is stored next to best-effort text. |
 | `api_shapes` | `(endpoint, path)` | Learned response structure per endpoint: key path, types seen, and whether the key is currently missing. No values. |
 | `api_drift` | `id` AUTOINCREMENT | Every drift event detected, with the run it came from. |
+| `changes` | `id` AUTOINCREMENT | Every change a sync reported (first-sync baselines excluded), with the same payload MQTT gets, whether or not MQTT is enabled. The outbox empties once published, so this is what `/api/changes` reads. Pruned with `sync_runs`. |
 
 The full entity diagram (students + primary entities) is in the [README](../README.md#database-schema).
 
@@ -276,6 +277,8 @@ Long-running aiohttp server on port 8585, reading the same SQLite the sync write
 | `GET /api/homework?n=` | Recent homework. |
 | `GET /api/exams?student=&days=` | Upcoming exams. |
 | `GET /api/messages?n=` | Recent messages (with content once backfilled). |
+| `GET /api/attendance?student=&days=&include_present=` | Absences, lateness, and other non-present lessons over the last `days` (default 30), with per-category counts and the status of any excuse covering each lesson. |
+| `GET /api/changes?since=&student=&type=&limit=` | Changes detected by syncs, newest first. `since` takes `7d`, `12h`, `30m`, or ISO 8601 (naive means UTC); default 24h. `student=` keeps account-wide messages. `type` is a comma list of item types (`grade`, `exam`, `message`, ...). |
 | `GET /api/schedule?student=&only_substitutions=&days=` | Lesson schedule including substitutions/cancellations. |
 | `GET /calendar/<student>.ics` | Per-student iCalendar feed (see below). |
 

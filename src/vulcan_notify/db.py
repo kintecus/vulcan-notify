@@ -258,6 +258,21 @@ CREATE TABLE IF NOT EXISTS api_drift (
     detail TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sync_runs_started ON sync_runs(started_at);
+
+-- Every change a sync reported, kept after the MQTT outbox drains. The outbox only holds
+-- what is still unpublished, so without this nothing can answer "what changed since X".
+CREATE TABLE IF NOT EXISTS changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    detected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    run_id INTEGER,
+    student TEXT,
+    item_type TEXT NOT NULL,
+    change_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_changes_detected ON changes(detected_at);
 """
 
 # Data sections a sync covers. Health is reported per section so a partial
@@ -1200,6 +1215,9 @@ class Database:
             "(SELECT id FROM sync_runs WHERE started_at < datetime('now', ?))",
             (offset,),
         )
+        await self.db.execute(
+            "DELETE FROM changes WHERE detected_at < datetime('now', ?)", (offset,)
+        )
         cursor = await self.db.execute(
             "DELETE FROM sync_runs WHERE started_at < datetime('now', ?)", (offset,)
         )
@@ -1318,6 +1336,23 @@ class Database:
         await self.db.executemany(
             "INSERT INTO api_drift (run_id, endpoint, kind, path, detail) VALUES (?, ?, ?, ?, ?)",
             [(run_id, d.endpoint, d.kind, d.path, d.detail) for d in drifts],
+        )
+
+    async def record_change(
+        self,
+        run_id: int | None,
+        student: str | None,
+        item_type: str,
+        change_type: str,
+        title: str,
+        body: str,
+        payload: str,
+    ) -> None:
+        await self.db.execute(
+            "INSERT INTO changes "
+            "(run_id, student, item_type, change_type, title, body, payload) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (run_id, student, item_type, change_type, title, body, payload),
         )
 
     async def get_health(self, stale_after_seconds: int = 3600) -> dict[str, Any]:

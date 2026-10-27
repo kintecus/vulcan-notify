@@ -320,3 +320,26 @@ async def test_drift_reported_in_full_sync_result(db: Database) -> None:
     client.shapes = {"uczen:Context": extract({"uczniowie": [{"klucz": "x"}]})}
     result = await sync_all(client, db)
     assert {d.kind for d in result.drifts} == {"added", "missing"}
+
+
+async def test_sync_all_logs_changes_but_not_baseline(db: Database) -> None:
+    client = _make_mock_client(grades=[])
+    client.get_messages = AsyncMock(return_value=[_msg(1)])
+    await sync_all(client, db)
+
+    cursor = await db.db.execute("SELECT count(*) FROM changes")
+    assert (await cursor.fetchone())[0] == 0
+
+    client = _make_mock_client(grades=[GRADE])
+    client.get_messages = AsyncMock(return_value=[_msg(2), _msg(1)])
+    await sync_all(client, db)
+
+    cursor = await db.db.execute(
+        "SELECT student, item_type, change_type, payload FROM changes ORDER BY id"
+    )
+    rows = await cursor.fetchall()
+    assert [(r[0], r[1], r[2]) for r in rows] == [
+        ("Jan", "grade", "new"),
+        (None, "message", "new"),
+    ]
+    assert '"subject": "Math"' in rows[0][3]
