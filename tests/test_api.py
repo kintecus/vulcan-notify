@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 from vulcan_notify import api as api_mod
 from vulcan_notify.config import settings
 from vulcan_notify.db import Database
-from vulcan_notify.models import Exam, Grade, Student, SubjectSummary
+from vulcan_notify.models import AttendanceEntry, Exam, Excuse, Grade, Student, SubjectSummary
 
 
 @pytest.fixture
@@ -565,3 +565,103 @@ def test_health_survives_missing_drift_table(tmp_path: Path) -> None:
     conn = sqlite3.connect(tmp_path / "bare.db")
     assert api_mod._recent_drift(conn) is None
     conn.close()
+
+
+async def _log_change(
+    db_path: Path, student: str | None, item_type: str, detected_at: str | None = None
+) -> None:
+    db = Database(db_path)
+    await db.connect()
+    await db.record_change(
+        None, student, item_type, "new", f"{item_type} title", "body",
+        json.dumps({"student": student, "title": "t", "subject": "Math", "timestamp": "x"}),
+    )
+    if detected_at:
+        await db.db.execute(
+            "UPDATE changes SET detected_at = ? WHERE id = last_insert_rowid()", (detected_at,)
+        )
+    await db.commit()
+    await db.close()
+
+
+async def test_changes_since_window_and_shape(seeded_db: Path) -> None:
+    await _log_change(seeded_db, "Solomiia", "grade", "2020-01-01 00:00:00")
+    await _log_change(seeded_db, "Solomiia", "exam")
+
+    out = api_mod._get_changes("7d")
+    assert out["count"] == 1
+    change = out["changes"][0]
+    assert change["type"] == "exam"
+    assert change["detected_at"].endswith("+00:00")
+    # Envelope keys duplicated by columns are dropped from details.
+    assert change["details"] == {"subject": "Math"}
+
+    assert api_mod._get_changes("2019-12-31T23:00:00+00:00")["count"] == 2
+
+
+async def test_changes_filters(seeded_db: Path) -> None:
+    await _log_change(seeded_db, "Solomiia", "grade")
+    await _log_change(seeded_db, "Other", "grade")
+    await _log_change(seeded_db, None, "message")
+
+    by_student = api_mod._get_changes(student_filter="Solomiia")
+    # Account-wide messages stay in a per-student view.
+    assert sorted(c["type"] for c in by_student["changes"]) == ["grade", "message"]
+
+    assert api_mod._get_changes(types=["message"])["count"] == 1
+
+    limited = api_mod._get_changes(limit=2)
+    assert limited["count"] == 2 and limited["truncated"] is True
+    assert [c["type"] for c in limited["changes"]] == ["message", "grade"]  # newest first
+
+
+async def test_changes_bad_since_is_400(seeded_db: Path) -> None:
+    app = api_mod.create_app()
+    handler = app.middlewares[0]
+    response = await handler(
+        make_mocked_request("GET", "/api/changes?since=yesterday", app=app),
+        api_mod.handle_changes,
+    )
+    assert response.status == 400
+
+
+def test_changes_before_first_sync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "db_path", tmp_path / "empty.db")
+    assert api_mod._get_changes()["changes"] == []
+
+
+async def test_attendance_hides_present_and_joins_excuses(seeded_db: Path) -> None:
+    day = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    old = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+    db = Database(seeded_db)
+    await db.connect()
+    for date, lesson, category in [(day, 1, 1), (day, 2, 2), (day, 3, 6), (old, 1, 2)]:
+        await db.upsert_attendance(
+            "S1",
+            AttendanceEntry(
+                lesson_number=lesson,
+                category=category,
+                date=f"{date}T00:00:00+02:00",
+                subject="Math",
+                teacher="T",
+                time_from=f"{date}T08:{lesson}0:00+02:00",
+                time_to="",
+            ),
+        )
+    await db.upsert_excuse(
+        "S1", Excuse(id=1, day_id=1, date=f"{day}T00:00:00+02:00", lesson_number=2, status=1)
+    )
+    await db.commit()
+    await db.close()
+
+    sol = api_mod._get_attendance(days=30)["Solomiia"]
+    assert sol["summary"] == {"present": 1, "absent": 1, "category_6": 1}
+    assert [(r["lesson_number"], r["category"]) for r in sol["records"]] == [
+        (3, "category_6"),
+        (2, "absent"),
+    ]
+    assert sol["records"][1]["excuse_status"] == 1
+    assert sol["records"][1]["time_from"] == "08:20"
+    assert sol["records"][0]["excuse_status"] is None
+
+    assert api_mod._get_attendance(days=30, include_present=True)["Solomiia"]["count"] == 3
