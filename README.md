@@ -7,7 +7,7 @@ Syncs the eduVulcan web API to a local SQLite database and diffs each run agains
 
 **Tracks** grades, attendance, exams, homework, messages (with an optional sender whitelist), lesson substitutions/cancellations, days off, absence excuses, remarks, and announcements. It handles multiple students under one parent account, and alerts when the undocumented eduVulcan API changes shape.
 
-**Exposes** terminal output, macOS Calendar events, MQTT events with a persistent outbox, a JSON API on `:8585`, a per-student `.ics` feed, and optional AI digests via any OpenAI-compatible API.
+**Exposes** terminal output, macOS Calendar events, MQTT events with a persistent outbox, a JSON API on `:8585` (including a feed of everything that changed), a per-student `.ics` feed, optional AI digests via any OpenAI-compatible API, and a read-only Agent Skill for asking questions in Claude Code, Codex, or Pi.
 
 ## How it works
 
@@ -68,8 +68,8 @@ flowchart LR
 ```
 
 1. **Auth** - log in once in a Playwright browser to save session cookies. If credentials are stored, the tool renews expired sessions headlessly.
-2. **Fetch** - call the eduVulcan web API with those cookies: grades (all periods), attendance (last 90 days), exams, homework, messages, and the schedule.
-3. **Diff and persist** - compare against SQLite and upsert with `INSERT OR REPLACE`. Exams and homework that drop out of the API are soft-deleted. The first sync stores a baseline and reports nothing.
+2. **Fetch** - call the eduVulcan web API with those cookies: grades (all periods), attendance (last 90 days), exams, homework, messages, the schedule, days off, absence excuses, remarks, and announcements.
+3. **Diff and persist** - compare against SQLite and upsert (`ON CONFLICT ... DO UPDATE`). Exams and homework that drop out of the API are soft-deleted. The first sync stores a baseline and reports nothing. Every change a later run reports is also kept in a change log, which backs `/api/changes`.
 4. **Watch for drift** - compare each response's structure (key paths and types, never values) with what was learned before. A renamed or missing field, a type change, or a section that suddenly returns nothing raises an alert.
 5. **Publish** - print changes, write them to macOS Calendar, and drain the MQTT outbox to the broker. The outbox survives broker outages.
 6. **Serve** - a separate long-running process (`python -m vulcan_notify.api`) serves HTTP and iCalendar from the same SQLite file.
@@ -115,7 +115,16 @@ Setup: [`docs/deployment.md`](docs/deployment.md).
 
 ## Agent access
 
-[`skills/school-brief`](skills/school-brief) is an Agent Skill (Claude Code, Codex, Pi) that turns a coding agent into a read-only school chief of staff: morning briefs, "anything to act on before Friday", and draft replies to teachers. Its `vulcan-ask` client only reads the HTTP API (`/api/changes` and `/api/attendance` exist for it), so the agent never logs in, syncs, or sends anything. Install and permission rules are in its [README](skills/school-brief/README.md).
+[`skills/school-brief`](skills/school-brief) is an Agent Skill (Claude Code, Codex, Pi) that turns a coding agent into a read-only school chief of staff: morning briefs, "anything to act on before Friday", and draft replies to teachers. Its `vulcan-ask` client only reads the HTTP API, so the agent never logs in, syncs, or sends anything:
+
+```bash
+export VULCAN_API_URL=http://<api-host>:8585
+skills/school-brief/scripts/vulcan-ask brief                    # everything a morning brief needs, one call
+skills/school-brief/scripts/vulcan-ask changes --since 7d       # what changed: grades, exams, messages, ...
+skills/school-brief/scripts/vulcan-ask attendance --days 30     # absences, with excuse status
+```
+
+Two endpoints exist mainly for it. `/api/changes?since=7d` returns the change log, and `/api/attendance` lists non-present lessons. Setup, including the Claude Code deny rules that keep the agent read-only, is in the skill's [README](skills/school-brief/README.md).
 
 ## Auto-login
 
@@ -149,7 +158,7 @@ Set these as environment variables or in `.env`.
 | `SYNC_ATTENDANCE_DAYS` | `90` | Attendance lookback window |
 | `SYNC_MESSAGE_BACKFILL_BATCH` | `10` | Legacy message bodies to refetch per run |
 | `SYNC_MESSAGE_HISTORY_PAGES` | `3` | Older inbox pages (50 each) to backfill per run, until the oldest is stored |
-| `SYNC_HISTORY_KEEP_DAYS` | `90` | Retention for sync run history |
+| `SYNC_HISTORY_KEEP_DAYS` | `90` | Retention for sync run history and the change log |
 | `POLL_INTERVAL` | `1800` | Seconds between syncs in the service loop |
 | `QUIET_HOURS_START` / `QUIET_HOURS_END` | `0` / `5` | Hours (0-23) when syncing pauses |
 | `QUIET_HOURS_TZ` | `Europe/Warsaw` | Time zone for the quiet window (the container stays on UTC) |
@@ -175,3 +184,4 @@ Set these as environment variables or in `.env`.
 - [`docs/architecture.md`](docs/architecture.md) - pipeline, schema, MQTT payloads, endpoints
 - [`docs/deployment.md`](docs/deployment.md) - Docker, Proxmox LXC, and systemd
 - [`docs/eduvulcan-api.md`](docs/eduvulcan-api.md) - reverse-engineered eduVulcan web API reference
+- [`skills/school-brief/README.md`](skills/school-brief/README.md) - agent skill setup and permission rules
