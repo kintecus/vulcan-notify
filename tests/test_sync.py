@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 from vulcan_notify.db import Database
 from vulcan_notify.models import (
     ClassificationPeriod,
-    DashboardData,
     Exam,
     Grade,
     Homework,
@@ -65,7 +64,11 @@ def _make_mock_client(
     client.get_exams = AsyncMock(return_value=[] if exams is None else exams)
     client.get_homework = AsyncMock(return_value=[] if homework is None else homework)
     client.get_schedule = AsyncMock(return_value=[])
-    client.get_dashboard = AsyncMock(return_value=DashboardData(unread_messages=5))
+    client.get_days_off = AsyncMock(return_value=[])
+    client.get_excuses = AsyncMock(return_value=[])
+    client.get_remarks = AsyncMock(return_value=[])
+    client.get_announcements = AsyncMock(return_value=[])
+    client.shapes = {}
     client.get_messages = AsyncMock(return_value=[])
     client.get_message_detail = AsyncMock(return_value=None)
     client.close = AsyncMock()
@@ -201,3 +204,119 @@ async def test_sync_messages_backfills_legacy_content(db: Database) -> None:
     cursor = await db.db.execute("SELECT content FROM messages WHERE id = 9001")
     row = await cursor.fetchone()
     assert row[0] == "<p>Backfilled body.</p>"
+
+
+def _msg(msg_id: int) -> Message:
+    return Message(
+        id=msg_id,
+        api_global_key=f"k{msg_id}",
+        sender="Teacher",
+        subject=f"S{msg_id}",
+        date="2026-10-01",
+        mailbox="Jan",
+        has_attachments=False,
+        is_read=False,
+    )
+
+
+def _inbox(ids: list[int]):
+    """Fake Odebrane: newest first, inclusive cursor, like the real endpoint."""
+    ordered = sorted(ids, reverse=True)
+
+    async def get_messages(page_size: int = 50, last_id: int = 0) -> list[Message]:
+        older = [i for i in ordered if last_id == 0 or i <= last_id]
+        return [_msg(i) for i in older[:page_size]]
+
+    return get_messages
+
+
+async def test_new_sections_baseline_on_first_success(db: Database) -> None:
+    """Days off etc. added to an existing install must not push every stored item."""
+    from vulcan_notify.models import DayOff
+
+    client = _make_mock_client()
+    await sync_student(client, db, STUDENT_A)  # first sync of the student
+    # Simulate an install that predates the new sections.
+    await db.db.execute("DELETE FROM sync_state WHERE key LIKE 'baseline:%:days_off'")
+    await db.commit()
+
+    client.get_days_off = AsyncMock(return_value=[DayOff("Ferie", "2027-01-19", "2027-02-01")])
+    result = await sync_student(client, db, STUDENT_A)
+    assert result.new_days_off == []
+
+    client.get_days_off = AsyncMock(
+        return_value=[
+            DayOff("Ferie", "2027-01-19", "2027-02-01"),
+            DayOff("Dzien dyrektorski", "2026-11-10", "2026-11-10"),
+        ]
+    )
+    result = await sync_student(client, db, STUDENT_A)
+    assert [c.title for c in result.new_days_off] == ["Day off: Dzien dyrektorski"]
+
+
+async def test_excuse_status_change_detected(db: Database) -> None:
+    from vulcan_notify.models import Excuse
+
+    client = _make_mock_client()
+    client.get_excuses = AsyncMock(return_value=[Excuse(7, 70, "2026-10-01", 3, 1)])
+    await sync_student(client, db, STUDENT_A)
+    await sync_student(client, db, STUDENT_A)  # section baseline done, no change
+
+    client.get_excuses = AsyncMock(return_value=[Excuse(7, 70, "2026-10-01", 3, 2)])
+    result = await sync_student(client, db, STUDENT_A)
+    assert len(result.new_excuses) == 1
+    assert "status 1 -> 2" in result.new_excuses[0].body
+
+
+async def test_new_remark_detected(db: Database) -> None:
+    from vulcan_notify.models import FeedItem
+
+    client = _make_mock_client()
+    await sync_student(client, db, STUDENT_A)
+    client.get_remarks = AsyncMock(
+        return_value=[FeedItem("remark", "r1", "Brak stroju", "Nowak", "2026-10-01", "{}")]
+    )
+    result = await sync_student(client, db, STUDENT_A)
+    assert [c.body for c in result.new_remarks] == ["Nowak: Brak stroju"]
+
+
+async def test_messages_page_until_known_when_more_than_a_page_is_new(db: Database) -> None:
+    await db.upsert_message(_msg(1))
+    await db.set_state("last_sync:messages", "2026-10-01T00:00:00")
+    await db.set_state("messages_history_done", "x")
+    await db.commit()
+
+    client = _make_mock_client()
+    client.get_messages = AsyncMock(side_effect=_inbox(list(range(1, 121))))
+    new, is_first, failure = await sync_messages(client, db)
+
+    assert failure is None and not is_first
+    assert sorted(m.id for m in new) == list(range(2, 121))
+
+
+async def test_message_history_backfills_older_pages_without_pushing(db: Database) -> None:
+    client = _make_mock_client()
+    client.get_messages = AsyncMock(side_effect=_inbox(list(range(1, 201))))
+
+    # First message sync: baseline page plus a few history pages, nothing reported.
+    new, is_first, _ = await sync_messages(client, db)
+    assert is_first and new == []
+    stored = await db.get_message_ids()
+    # 50 newest + 3 history pages of 49 (each page repeats its cursor message)
+    assert len(stored) == 197
+    assert await db.get_state("messages_history_done") is None
+
+    new, _, _ = await sync_messages(client, db)
+    assert new == []
+    assert await db.get_state("messages_history_done") is not None
+
+
+async def test_drift_reported_in_full_sync_result(db: Database) -> None:
+    from vulcan_notify.drift import extract
+
+    client = _make_mock_client()
+    client.shapes = {"uczen:Context": extract({"uczniowie": [{"key": "x"}]})}
+    await sync_all(client, db)
+    client.shapes = {"uczen:Context": extract({"uczniowie": [{"klucz": "x"}]})}
+    result = await sync_all(client, db)
+    assert {d.kind for d in result.drifts} == {"added", "missing"}

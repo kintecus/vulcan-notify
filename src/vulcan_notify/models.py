@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -131,12 +131,36 @@ class Lesson:
 
 
 @dataclass
-class DashboardData:
-    """Combined response from all Tablica endpoints for one student."""
+class DayOff:
+    """A school holiday or closure from DniWolne."""
 
-    grades: list[dict[str, object]] = field(default_factory=list)
-    attendance: dict[str, object] = field(default_factory=dict)
-    exams: list[Exam] = field(default_factory=list)
-    homework: list[Homework] = field(default_factory=list)
-    announcements: list[dict[str, object]] = field(default_factory=list)
-    unread_messages: int = 0
+    name: str  # nazwa
+    date_from: str  # dataOd (ISO)
+    date_to: str  # dataDo (ISO)
+
+
+@dataclass
+class Excuse:
+    """One lesson covered by an absence excuse (Usprawiedliwienia)."""
+
+    id: int  # idUsprawiedliwienieDzienPoraLekcji
+    day_id: int  # idUsprawiedliwienieDzien
+    date: str  # dzien
+    lesson_number: int | None  # numerLekcji; null for whole-day excuses
+    status: int  # status; only 1 observed so far, meaning unconfirmed
+
+
+@dataclass
+class FeedItem:
+    """A remark or announcement.
+
+    Neither endpoint has returned a single item yet, so there is no observed schema to
+    parse against. The raw item is kept whole and the text fields are best-effort.
+    """
+
+    kind: str  # "remark" | "announcement"
+    key: str  # id when present, else a hash of the item
+    text: str
+    author: str
+    date: str
+    raw: str  # canonical JSON of the original item

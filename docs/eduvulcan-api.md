@@ -130,11 +130,43 @@ Returns attendance records for a date range. Dates are ISO 8601 with timezone of
 
 ### GET /api/FrekwencjaStatystyki?key={key}&idPrzedmiot={id}
 
-Attendance statistics. Use `idPrzedmiot=-1` for all subjects.
+Attendance statistics. Use `idPrzedmiot=-1` for all subjects. Not synced.
+
+```json
+{
+  "podsumowanie": 97.3,
+  "statystyki": [
+    {"kategoriaFrekwencji": 1, "razem": 412, "okresy": [210, 202], "miesiace": [{"miesiac": 9, "wartosc": 80}]}
+  ]
+}
+```
+
+`statystyki` has one entry per attendance category, and categories 1 through 7 all appear (observed 2026-10-27). That is the full set `kategoriaFrekwencji` can take; only 1-4 are mapped so far (see Open questions).
 
 ### GET /api/Usprawiedliwienia?key={key}&dataOd={isoDate}&dataDo={isoDate}
 
-Excuse requests for the given date range.
+Excuse requests for the given date range. Synced into `excuses`; a status change is published.
+
+```json
+{
+  "usprawiedliwienia": [
+    {
+      "idUsprawiedliwienieDzien": 1234,
+      "idUsprawiedliwienieDzienPoraLekcji": 5678,
+      "dzien": "2026-10-01T00:00:00+02:00",
+      "idPoraLekcji": 3,
+      "numerLekcji": 3,
+      "poczatekLekcji": "2026-10-01T09:50:00+02:00",
+      "koniecLekcji": "2026-10-01T10:35:00+02:00",
+      "status": 1
+    }
+  ],
+  "usprawiedliwieniaAktywne": true,
+  "usprawiedliwieniaBlokada": {"dataOd": null, "dataDo": null, "obowiazujeDo": null, "oddzialy": {}}
+}
+```
+
+The lesson fields (`idPoraLekcji`, `numerLekcji`, `poczatekLekcji`, `koniecLekcji`) are all `null` for a whole-day excuse. Only `status: 1` has been observed; its meaning is unconfirmed.
 
 ## Dashboard summaries (Tablica endpoints)
 
@@ -223,7 +255,7 @@ Homework detail. Returns description, teacher, attachments, and student response
 
 ### GET /api/SprawdzianyZadaniaDomowe?key={key}
 
-Calendar view combining both exams and homework. Used by the "Sprawdziany i zadania domowe" page.
+**Gone: returns HTTP 404 as of 2026-10-27**, with and without a date range. Previously a calendar view combining exams and homework for the "Sprawdziany i zadania domowe" page. The page still exists in the SPA, so it has moved to an endpoint not yet identified. Nothing here depended on it.
 
 ### GET /api/WiadomosciNieodczytane
 
@@ -235,23 +267,23 @@ Unread message count (not per-student, account-level).
 
 ### GET /api/OgloszeniaTablica?key={key}
 
-Announcements. Returns `[]` when none.
+Announcements. Returns `[]` when none, and has never returned an item for this account, so the item schema is unknown. Synced into `feed_items` with the raw JSON kept; drift detection learns the real shape on the first item.
 
 ### GET /api/UsprawiedliwieniaTablica?key={key}
 
-Excuse overview.
+Excuse overview. Same top-level keys as `Usprawiedliwienia` but no date range, and `usprawiedliwieniaBlokada` is `null` rather than an object.
 
 ### GET /api/WychowawcyTablica?key={key}
 
 Homeroom teachers.
 
 ```json
-[{"imieNazwisko": "Kowalczyk Maria", "isGlowny": true, "globalKeySkrzynka": "..."}]
+[{"imieNazwisko": "Nowak Maria", "isGlowny": true, "globalKeySkrzynka": "..."}]
 ```
 
 ### GET /api/Uwagi?key={key}
 
-Student notes/remarks. Returns `[]` when none.
+Behaviour notes (remarks). Returns `[]` when none. Like announcements, it has never returned an item, so it is synced into `feed_items` with the raw JSON kept. The SPA's page for this is `PochwalyUwagi` (praise and remarks), so praise may live on a separate endpoint not yet identified.
 
 ## Other endpoints
 
@@ -265,7 +297,19 @@ List of subjects.
 
 ### GET /api/DniWolne?key={key}&dataOd={isoDate}&dataDo={isoDate}
 
-School holidays/days off.
+School holidays and closures. Synced into `days_off` for the current school year; a new entry is published.
+
+```json
+[
+  {
+    "nazwa": "Ferie zimowe",
+    "dataOd": "2027-01-18T00:00:00+01:00",
+    "dataDo": "2027-01-31T00:00:00+01:00",
+    "wszystkieSkladowe": true,
+    "jednostkiSkladowe": [{"id": 12, "nazwa": "Szkoła Podstawowa"}]
+  }
+]
+```
 
 ### GET /api/PlanZajecTablica?key={key}
 
@@ -299,6 +343,8 @@ Response: list of lesson dicts with keys:
 - `zmianyUwagi` — list of free-text remarks about the change
 
 ### GET /api/KomunikatStartowy
+
+Startup notice. Returns `[]` for this account; schema unknown. Not synced.
 
 System-wide announcements. Returns `[]` when none.
 
@@ -442,14 +488,14 @@ Unread count per mailbox.
 
 ### GET /api/Odebrane?idLastWiadomosc={lastId}&pageSize={n}
 
-Received messages, paginated. Use `idLastWiadomosc=0` for the first page.
+Received messages, newest first. Use `idLastWiadomosc=0` for the first page. Passing a message id returns that message and older ones: **the cursor is inclusive**, so consecutive pages overlap by exactly one message. Paging goes back through the whole inbox (more than 740 messages here, confirmed 2026-10-27).
 
 ```json
 [
   {
     "id": 379162,
     "apiGlobalKey": "646d3311-...",
-    "korespondenci": "Kieca Anna - P - (School)",
+    "korespondenci": "Nowak Anna - P - (School)",
     "temat": "Message subject",
     "data": "2026-03-15T11:02:41.183+01:00",
     "skrzynka": "Parent Name - R - Child Name - (School)",
@@ -472,7 +518,7 @@ Full message detail including HTML content.
 {
   "id": 379162,
   "apiGlobalKey": "646d3311-...",
-  "nadawca": "Kieca Anna - P - (School)",
+  "nadawca": "Nowak Anna - P - (School)",
   "odbiorcy": ["Parent Name - R - Child Name - (School)"],
   "temat": "Message subject",
   "tresc": "<p>HTML message content</p>",
@@ -490,6 +536,26 @@ Shared configuration for the messages app.
 
 Email signatures per mailbox.
 
+## SPA feature inventory
+
+The SPA bundle (`uonetplus-cdn.vulcan.net.pl/AppCdn/EduVulcanUczen/Scripts/prodbundle_<version>.js`, version `26_7_1_67022` on 2026-10-27) is obfuscated: endpoint paths are assembled from a string table at runtime, so grepping it for `/api/` paths finds nothing. Its view and store names are readable, though, and list every page the app has:
+
+| View | Synced | Notes |
+|------|--------|-------|
+| `Oceny`, `Frekwencja`, `PlanZajec`, `SprawdzianyZadaniaDomowe`, `Tablica` | yes | Core sections |
+| `PochwalyUwagi` | partly | `Uwagi` endpoint; praise source unknown |
+| `Zebrania` | no | Parent-teacher meetings. Endpoint not identified |
+| `Osiagniecia` | no | Achievements |
+| `ZgloszoneNieobecnosci` (store) | no | Absences reported by the parent |
+| `EwidencjaObecnosci` | no | Presence register |
+| `RealizacjaZajec` | no | Lesson topics covered |
+| `Jadlospis` | no | Lunch menu |
+| `SzkolaOplaty`, `SzkolaFormularze`, `SzkolaInformacje`, `SzkolaNauczyciele`, `Podreczniki`, `DaneUcznia` | no | School admin and reference pages |
+
+Finding the endpoints behind the unsynced views needs a DevTools pass on the live site; guessing names from the view names did not work.
+
+**Do not fetch the SPA root (`https://uczen.eduvulcan.pl/{tenant}/`) with the API session cookies.** Doing that during probing on 2026-10-27 was followed immediately by every API call returning `409 {"message":"Brak uprawnień."}`, and the saved session had to be replaced by a fresh login. Without cookies the root redirects to the login page, which only carries the portal's asset version (`?_=26.10.1.2474`), not the SPA bundle's.
+
 ## Polling strategy
 
 For change detection, prefer the `*Tablica` (dashboard) endpoints - they're lightweight and designed for the dashboard to poll. The full endpoints (e.g. `/api/Oceny`, `/api/Frekwencja`) should be used sparingly to get detail when a change is detected.
@@ -502,7 +568,10 @@ Recommended approach:
 
 ## Open questions
 
-- Exact mapping of `kategoriaFrekwencji` values (only observed 1=present, 2=absent so far)
+- Exact mapping of `kategoriaFrekwencji` values. 1=present and 2=absent are confirmed, 3=late and 4=excused are assumed, and `FrekwencjaStatystyki` shows 5, 6, and 7 exist too
 - `rodzaj` values in SprawdzianyTablica (1=test? 2=quiz?)
 - Session cookie expiry duration (observed to survive at least a few minutes; longer-term testing needed)
-- Pagination: does `idLastWiadomosc` work for fetching older messages beyond the first page?
+- ~~Pagination beyond the first page~~ Answered: yes, with an inclusive cursor (see `Odebrane`)
+- `status` values in `Usprawiedliwienia` (only 1 observed)
+- Item schemas for `Uwagi` and `OgloszeniaTablica` (never non-empty so far)
+- Where `SprawdzianyZadaniaDomowe` moved to

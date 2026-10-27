@@ -10,7 +10,7 @@ import pytest
 
 from vulcan_notify.client import VulcanFetchError
 from vulcan_notify.db import Database
-from vulcan_notify.models import ClassificationPeriod, DashboardData, Student
+from vulcan_notify.models import ClassificationPeriod, Student
 from vulcan_notify.sync import sync_all, sync_student
 
 STUDENT = Student(
@@ -34,7 +34,11 @@ def _client(**overrides: object) -> AsyncMock:
     client.get_exams = AsyncMock(return_value=[])
     client.get_homework = AsyncMock(return_value=[])
     client.get_schedule = AsyncMock(return_value=[])
-    client.get_dashboard = AsyncMock(return_value=DashboardData(unread_messages=0))
+    client.get_days_off = AsyncMock(return_value=[])
+    client.get_excuses = AsyncMock(return_value=[])
+    client.get_remarks = AsyncMock(return_value=[])
+    client.get_announcements = AsyncMock(return_value=[])
+    client.shapes = {}
     client.get_messages = AsyncMock(return_value=[])
     client.get_message_detail = AsyncMock(return_value=None)
     client.close = AsyncMock()
@@ -45,9 +49,7 @@ def _client(**overrides: object) -> AsyncMock:
 
 async def test_failed_section_is_recorded_and_not_marked_fresh(db: Database) -> None:
     """A failing section records 'failed' and leaves no freshness stamp behind."""
-    client = _client(
-        get_grades_and_summaries=AsyncMock(side_effect=VulcanFetchError("HTTP 500"))
-    )
+    client = _client(get_grades_and_summaries=AsyncMock(side_effect=VulcanFetchError("HTTP 500")))
     run_id = await db.create_sync_run()
 
     result = await sync_student(client, db, STUDENT, run_id=run_id)

@@ -10,7 +10,7 @@ from vulcan_notify.text import strip_html
 if TYPE_CHECKING:
     from vulcan_notify.differ import Change
     from vulcan_notify.models import Message
-    from vulcan_notify.sync import FullSyncResult
+    from vulcan_notify.sync import FullSyncResult, SyncResult
 
 # ANSI escape codes - disabled when not a TTY
 _is_tty = sys.stdout.isatty()
@@ -32,6 +32,20 @@ def _prefix_for_change(change: Change) -> str:
     if change.change_type == "updated":
         return f"{YELLOW}~{RESET}"
     return " "
+
+
+def _groups(sr: SyncResult) -> list[tuple[str, list[Change]]]:
+    return [
+        ("Grades", sr.new_grades),
+        ("Attendance", sr.new_attendance),
+        ("Exams", sr.new_exams),
+        ("Homework", sr.new_homework),
+        ("Substitutions", sr.new_substitutions),
+        ("Days off", sr.new_days_off),
+        ("Excuses", sr.new_excuses),
+        ("Remarks", sr.new_remarks),
+        ("Announcements", sr.new_announcements),
+    ]
 
 
 def format_change(change: Change) -> str:
@@ -92,30 +106,10 @@ def format_full_sync(
         if not sr.has_changes:
             lines.append("  No changes since last sync.")
         else:
-            if sr.new_grades:
-                lines.append(f"  {BOLD}Grades:{RESET}")
-                for change in sr.new_grades:
-                    lines.append(format_change(change))
-
-            if sr.new_attendance:
-                lines.append(f"  {BOLD}Attendance:{RESET}")
-                for change in sr.new_attendance:
-                    lines.append(format_change(change))
-
-            if sr.new_exams:
-                lines.append(f"  {BOLD}Exams:{RESET}")
-                for change in sr.new_exams:
-                    lines.append(format_change(change))
-
-            if sr.new_homework:
-                lines.append(f"  {BOLD}Homework:{RESET}")
-                for change in sr.new_homework:
-                    lines.append(format_change(change))
-
-            if sr.new_substitutions:
-                lines.append(f"  {BOLD}Substitutions:{RESET}")
-                for change in sr.new_substitutions:
-                    lines.append(format_change(change))
+            for label, changes in _groups(sr):
+                if changes:
+                    lines.append(f"  {BOLD}{label}:{RESET}")
+                    lines.extend(format_change(change) for change in changes)
 
         lines.append("")
 
@@ -136,6 +130,11 @@ def format_full_sync(
             lines.append(f"  {DIM}({skipped} messages filtered by whitelist){RESET}")
             lines.append("")
 
+    if result.drifts:
+        lines.append(f"{BOLD}{YELLOW}eduVulcan API drift ({len(result.drifts)}){RESET}")
+        lines.extend(f"    {YELLOW}?{RESET} {d.describe()}" for d in result.drifts)
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -150,17 +149,7 @@ def format_compact_sync(
         if sr.is_first_sync:
             parts.append(f"{sr.student.name}: initial sync")
             continue
-        counts = []
-        if sr.new_grades:
-            counts.append(f"{len(sr.new_grades)} grades")
-        if sr.new_attendance:
-            counts.append(f"{len(sr.new_attendance)} attendance")
-        if sr.new_exams:
-            counts.append(f"{len(sr.new_exams)} exams")
-        if sr.new_homework:
-            counts.append(f"{len(sr.new_homework)} homework")
-        if sr.new_substitutions:
-            counts.append(f"{len(sr.new_substitutions)} substitutions")
+        counts = [f"{len(changes)} {label.lower()}" for label, changes in _groups(sr) if changes]
         if counts:
             parts.append(f"{sr.student.name}: {', '.join(counts)}")
 
@@ -170,6 +159,9 @@ def format_compact_sync(
         filtered = filter_messages(result.new_messages, whitelist or [])
         if filtered:
             parts.append(f"{len(filtered)} new messages")
+
+    if result.drifts:
+        parts.append(f"{len(result.drifts)} API drift")
 
     if not parts:
         return "No changes"

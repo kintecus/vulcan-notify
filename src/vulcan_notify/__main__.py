@@ -292,6 +292,31 @@ async def _summarize_messages(db: Database, days: int) -> None:
         sys.exit(1)
 
 
+async def cmd_shapes() -> None:
+    """Print learned response structure as JSON: key paths and types, never values.
+
+    Safe to copy off the server; this is what refreshes tests/fixtures/shapes.json.
+    """
+    import json
+
+    db = Database(settings.db_path)
+    await db.connect()
+    try:
+        shapes = await db.get_api_shapes()
+    finally:
+        await db.close()
+    print(
+        json.dumps(
+            {
+                endpoint: {path: sorted(k.types) for path, k in sorted(known.items())}
+                for endpoint, known in sorted(shapes.items())
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+
+
 def main() -> None:
     setup_logging()
 
@@ -310,6 +335,8 @@ def main() -> None:
             asyncio.run(cmd_calendar())
         case "tui":
             asyncio.run(cmd_tui())
+        case "shapes":
+            asyncio.run(cmd_shapes())
         case "summarize":
             summary_type = "sync"
             days = 7
@@ -324,13 +351,14 @@ def main() -> None:
                 sys.exit(1)
             asyncio.run(cmd_summarize(summary_type=summary_type, days=days))
         case _:
-            print("Usage: vulcan-notify [auth|test|sync|heartbeat|calendar|tui|summarize]")
+            print("Usage: vulcan-notify [auth|test|sync|heartbeat|calendar|tui|summarize|shapes]")
             print("  auth      - Interactive login and save session")
             print("  test      - Test if saved session is valid")
             print("  sync      - Fetch latest data and show changes (default)")
             print("  heartbeat - Publish the retained MQTT heartbeat only, no sync")
             print("  calendar  - Force re-sync all events to macOS Calendar")
             print("  tui       - Interactive message browser")
+            print("  shapes    - Print learned API response structure (no values)")
             print("  summarize - AI summary of recent changes or messages")
             print("    --type sync|messages  (default: sync)")
             print("    --days N              (default: 7)")
