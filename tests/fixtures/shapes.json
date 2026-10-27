@@ -1,0 +1,700 @@
+{
+  "uczen:Context": {
+    "$": [
+      "object"
+    ],
+    "$.uczniowie": [
+      "array"
+    ],
+    "$.uczniowie[]": [
+      "object"
+    ],
+    "$.uczniowie[].aktywny": [
+      "bool"
+    ],
+    "$.uczniowie[].config": [
+      "object"
+    ],
+    "$.uczniowie[].config.isDostepMobilny": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isDydaktyka": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isJadlospis": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isLekcjeZaplanowane": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isLekcjeZrealizowane": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isNadzorPedagogiczny": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isOffice365": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isOplaty": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isPlatnosci": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isPodreczniki": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isScalanieKont": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isSynchronizacjaEsb": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isZaplac": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isZglaszanieNieobecnosci": [
+      "bool"
+    ],
+    "$.uczniowie[].config.isZmianaZdjecia": [
+      "bool"
+    ],
+    "$.uczniowie[].config.oneDriveClientId": [
+      "string"
+    ],
+    "$.uczniowie[].config.payByNetUrlForPayment": [
+      "string"
+    ],
+    "$.uczniowie[].config.projectClient": [
+      "null"
+    ],
+    "$.uczniowie[].dziennikDataDo": [
+      "string"
+    ],
+    "$.uczniowie[].dziennikDataOd": [
+      "string"
+    ],
+    "$.uczniowie[].globalKeySkrzynka": [
+      "string"
+    ],
+    "$.uczniowie[].idDziennik": [
+      "number"
+    ],
+    "$.uczniowie[].idJednostkaSkladowa": [
+      "number"
+    ],
+    "$.uczniowie[].idOddzial": [
+      "number"
+    ],
+    "$.uczniowie[].is13": [
+      "bool"
+    ],
+    "$.uczniowie[].isArtystyczna": [
+      "bool"
+    ],
+    "$.uczniowie[].isArtystyczna13": [
+      "bool"
+    ],
+    "$.uczniowie[].isDorosli": [
+      "bool"
+    ],
+    "$.uczniowie[].isPolicealna": [
+      "bool"
+    ],
+    "$.uczniowie[].isPrzedszkolak": [
+      "bool"
+    ],
+    "$.uczniowie[].isSpecjalna": [
+      "bool"
+    ],
+    "$.uczniowie[].isUczen": [
+      "bool"
+    ],
+    "$.uczniowie[].isWychowanek": [
+      "bool"
+    ],
+    "$.uczniowie[].jednostka": [
+      "string"
+    ],
+    "$.uczniowie[].jednostkaGodzinaDo": [
+      "null"
+    ],
+    "$.uczniowie[].jednostkaGodzinaOd": [
+      "null"
+    ],
+    "$.uczniowie[].key": [
+      "string"
+    ],
+    "$.uczniowie[].oddzial": [
+      "string"
+    ],
+    "$.uczniowie[].opiekunUcznia": [
+      "bool"
+    ],
+    "$.uczniowie[].pelnoletniUczen": [
+      "bool"
+    ],
+    "$.uczniowie[].posiadaPesel": [
+      "bool"
+    ],
+    "$.uczniowie[].rodzajDziennika": [
+      "number"
+    ],
+    "$.uczniowie[].uczen": [
+      "string"
+    ],
+    "$.uczniowie[].wymagaAutoryzacji": [
+      "bool"
+    ]
+  },
+  "uczen:DniWolne": {
+    "$": [
+      "array"
+    ],
+    "$[]": [
+      "object"
+    ],
+    "$[].dataDo": [
+      "string"
+    ],
+    "$[].dataOd": [
+      "string"
+    ],
+    "$[].jednostkiSkladowe": [
+      "array"
+    ],
+    "$[].jednostkiSkladowe[]": [
+      "object"
+    ],
+    "$[].jednostkiSkladowe[].id": [
+      "number"
+    ],
+    "$[].jednostkiSkladowe[].nazwa": [
+      "string"
+    ],
+    "$[].nazwa": [
+      "string"
+    ],
+    "$[].wszystkieSkladowe": [
+      "bool"
+    ]
+  },
+  "uczen:Frekwencja": {
+    "$": [
+      "object"
+    ],
+    "$.dziennikiSwietlicy": [
+      "array"
+    ],
+    "$.dziennikiSwietlicy[]": [
+      "object"
+    ],
+    "$.dziennikiSwietlicy[].data": [
+      "string"
+    ],
+    "$.dziennikiSwietlicy[].dataDo": [
+      "string"
+    ],
+    "$.dziennikiSwietlicy[].dataOd": [
+      "string"
+    ],
+    "$.dziennikiSwietlicy[].godzinaDo": [
+      "string"
+    ],
+    "$.dziennikiSwietlicy[].godzinaDoCalculated": [
+      "bool"
+    ],
+    "$.dziennikiSwietlicy[].godzinaOd": [
+      "string"
+    ],
+    "$.dziennikiSwietlicy[].kategoriaFrekwencji": [
+      "number"
+    ],
+    "$.dziennikiSwietlicy[].nauczyciel": [
+      "string"
+    ],
+    "$.dziennikiSwietlicy[].opisZajec": [
+      "string"
+    ],
+    "$.dziennikiZajecInnych": [
+      "array"
+    ],
+    "$.dziennikiZajecInnych[]": [
+      "object"
+    ],
+    "$.dziennikiZajecInnych[].data": [
+      "string"
+    ],
+    "$.dziennikiZajecInnych[].dataDo": [
+      "string"
+    ],
+    "$.dziennikiZajecInnych[].dataOd": [
+      "string"
+    ],
+    "$.dziennikiZajecInnych[].godzinaDo": [
+      "string"
+    ],
+    "$.dziennikiZajecInnych[].godzinaOd": [
+      "string"
+    ],
+    "$.dziennikiZajecInnych[].kategoriaFrekwencji": [
+      "number"
+    ],
+    "$.dziennikiZajecInnych[].nauczyciel": [
+      "string"
+    ],
+    "$.dziennikiZajecInnych[].opisZajec": [
+      "string"
+    ],
+    "$.oddzialy": [
+      "array"
+    ],
+    "$.oddzialy[]": [
+      "object"
+    ],
+    "$.oddzialy[].data": [
+      "string"
+    ],
+    "$.oddzialy[].dataDo": [
+      "string"
+    ],
+    "$.oddzialy[].dataOd": [
+      "string"
+    ],
+    "$.oddzialy[].godzinaDo": [
+      "string"
+    ],
+    "$.oddzialy[].godzinaOd": [
+      "string"
+    ],
+    "$.oddzialy[].idLekcjaOddzial": [
+      "number"
+    ],
+    "$.oddzialy[].idPoraLekcji": [
+      "number"
+    ],
+    "$.oddzialy[].kategoriaFrekwencji": [
+      "number"
+    ],
+    "$.oddzialy[].nauczyciel": [
+      "string"
+    ],
+    "$.oddzialy[].numerLekcji": [
+      "number"
+    ],
+    "$.oddzialy[].opisZajec": [
+      "string"
+    ]
+  },
+  "uczen:Oceny": {
+    "$": [
+      "object"
+    ],
+    "$.ocenyPrzedmioty": [
+      "array"
+    ],
+    "$.ocenyPrzedmioty[]": [
+      "object"
+    ],
+    "$.ocenyPrzedmioty[].egzaminFormaPraktyczna": [
+      "null"
+    ],
+    "$.ocenyPrzedmioty[].egzaminFormaUstna": [
+      "null"
+    ],
+    "$.ocenyPrzedmioty[].egzaminOcenaLaczna": [
+      "null"
+    ],
+    "$.ocenyPrzedmioty[].egzaminOcenaProponowana": [
+      "null"
+    ],
+    "$.ocenyPrzedmioty[].isReligiaEtyka": [
+      "bool"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe": [
+      "array",
+      "null"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[]": [
+      "object"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].idKolumny": [
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].kategoriaKolumny": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].nazwaKolumny": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny": [
+      "array"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[]": [
+      "object"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].dataOceny": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].idKolumny": [
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].idOcenaPoprawiona": [
+      "null",
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].kategoriaKolumny": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].kolorOceny": [
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].nauczyciel": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].nazwaKolumny": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].waga": [
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].wpis": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].kolumnyOcenyCzastkowe[].oceny[].zmienionaOdOstatniegoLogowania": [
+      "bool"
+    ],
+    "$.ocenyPrzedmioty[].nauczyciele": [
+      "array",
+      "null"
+    ],
+    "$.ocenyPrzedmioty[].nauczyciele[]": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].ocenaOkresowa": [
+      "null",
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].ocenaOkresowaPunkty": [
+      "null",
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].podsumowanieOcen": [
+      "null",
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].pozycja": [
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].proponowanaOcenaOkresowa": [
+      "null",
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].proponowanaOcenaOkresowaPunkty": [
+      "null",
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].przedmiotNazwa": [
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].srednia": [
+      "null",
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].sredniaWszystkieSemestry": [
+      "null",
+      "number"
+    ],
+    "$.ocenyPrzedmioty[].sumaPunktow": [
+      "null",
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].sumaPunktowWszystkieSemestry": [
+      "null",
+      "string"
+    ],
+    "$.ocenyPrzedmioty[].uwzglednijWageOcen": [
+      "bool"
+    ],
+    "$.ustawienia": [
+      "object"
+    ],
+    "$.ustawienia.isDorosli": [
+      "bool"
+    ],
+    "$.ustawienia.isOcenaOpisowa": [
+      "bool"
+    ],
+    "$.ustawienia.isOstatniOkresKlasyfikacyjny": [
+      "bool"
+    ],
+    "$.ustawienia.isSredniaAndPunkty": [
+      "bool"
+    ]
+  },
+  "uczen:OgloszeniaTablica": {
+    "$": [
+      "array"
+    ]
+  },
+  "uczen:OkresyKlasyfikacyjne": {
+    "$": [
+      "array"
+    ],
+    "$[]": [
+      "object"
+    ],
+    "$[].dataDo": [
+      "string"
+    ],
+    "$[].dataOd": [
+      "string"
+    ],
+    "$[].id": [
+      "number"
+    ],
+    "$[].numerOkresu": [
+      "number"
+    ]
+  },
+  "uczen:PlanZajec": {
+    "$": [
+      "array"
+    ],
+    "$[]": [
+      "object"
+    ],
+    "$[].adnotacja": [
+      "number"
+    ],
+    "$[].data": [
+      "string"
+    ],
+    "$[].dodatkowe": [
+      "bool"
+    ],
+    "$[].godzinaDo": [
+      "string"
+    ],
+    "$[].godzinaOd": [
+      "string"
+    ],
+    "$[].idJednostkaSkladowa": [
+      "null",
+      "number"
+    ],
+    "$[].podzial": [
+      "null",
+      "string"
+    ],
+    "$[].prowadzacy": [
+      "string"
+    ],
+    "$[].prowadzacyWspomagajacy1": [
+      "null",
+      "string"
+    ],
+    "$[].prowadzacyWspomagajacy2": [
+      "null",
+      "string"
+    ],
+    "$[].przedmiot": [
+      "string"
+    ],
+    "$[].pseudonim": [
+      "null"
+    ],
+    "$[].sala": [
+      "string"
+    ],
+    "$[].zmiany": [
+      "array"
+    ],
+    "$[].zmianyUwagi": [
+      "array"
+    ],
+    "$[].zmiany[]": [
+      "object"
+    ],
+    "$[].zmiany[].dzien": [
+      "null"
+    ],
+    "$[].zmiany[].godzinaDo": [
+      "null"
+    ],
+    "$[].zmiany[].godzinaOd": [
+      "null"
+    ],
+    "$[].zmiany[].grupa": [
+      "null"
+    ],
+    "$[].zmiany[].informacjeNieobecnosc": [
+      "null"
+    ],
+    "$[].zmiany[].nrLekcji": [
+      "null"
+    ],
+    "$[].zmiany[].prowadzacy": [
+      "string"
+    ],
+    "$[].zmiany[].sala": [
+      "string"
+    ],
+    "$[].zmiany[].typProwadzacego": [
+      "number"
+    ],
+    "$[].zmiany[].zajecia": [
+      "null"
+    ],
+    "$[].zmiany[].zmiana": [
+      "number"
+    ],
+    "$[].zrealizowane": [
+      "bool"
+    ]
+  },
+  "uczen:SprawdzianyTablica": {
+    "$": [
+      "array"
+    ]
+  },
+  "uczen:Usprawiedliwienia": {
+    "$": [
+      "object"
+    ],
+    "$.usprawiedliwienia": [
+      "array"
+    ],
+    "$.usprawiedliwieniaAktywne": [
+      "bool"
+    ],
+    "$.usprawiedliwieniaBlokada": [
+      "object"
+    ],
+    "$.usprawiedliwieniaBlokada.dataDo": [
+      "null"
+    ],
+    "$.usprawiedliwieniaBlokada.dataOd": [
+      "null"
+    ],
+    "$.usprawiedliwieniaBlokada.obowiazujeDo": [
+      "null"
+    ],
+    "$.usprawiedliwieniaBlokada.oddzialy": [
+      "object"
+    ],
+    "$.usprawiedliwienia[]": [
+      "object"
+    ],
+    "$.usprawiedliwienia[].dzien": [
+      "string"
+    ],
+    "$.usprawiedliwienia[].idPoraLekcji": [
+      "null",
+      "number"
+    ],
+    "$.usprawiedliwienia[].idUsprawiedliwienieDzien": [
+      "number"
+    ],
+    "$.usprawiedliwienia[].idUsprawiedliwienieDzienPoraLekcji": [
+      "number"
+    ],
+    "$.usprawiedliwienia[].koniecLekcji": [
+      "null",
+      "string"
+    ],
+    "$.usprawiedliwienia[].numerLekcji": [
+      "null",
+      "number"
+    ],
+    "$.usprawiedliwienia[].poczatekLekcji": [
+      "null",
+      "string"
+    ],
+    "$.usprawiedliwienia[].status": [
+      "number"
+    ]
+  },
+  "uczen:Uwagi": {
+    "$": [
+      "array"
+    ]
+  },
+  "uczen:ZadaniaDomoweTablica": {
+    "$": [
+      "array"
+    ],
+    "$[]": [
+      "object"
+    ],
+    "$[].data": [
+      "string"
+    ],
+    "$[].id": [
+      "number"
+    ],
+    "$[].przedmiot": [
+      "string"
+    ]
+  },
+  "wiadomosci:Odebrane": {
+    "$": [
+      "array"
+    ],
+    "$[]": [
+      "object"
+    ],
+    "$[].apiGlobalKey": [
+      "string"
+    ],
+    "$[].data": [
+      "string"
+    ],
+    "$[].hasZalaczniki": [
+      "bool"
+    ],
+    "$[].id": [
+      "number"
+    ],
+    "$[].korespondenci": [
+      "string"
+    ],
+    "$[].korespondenciSzczegoly": [
+      "null"
+    ],
+    "$[].korespondenciTyp": [
+      "array"
+    ],
+    "$[].korespondenciTyp[]": [
+      "number"
+    ],
+    "$[].nieprzeczytanePrzeczytanePrzez": [
+      "null"
+    ],
+    "$[].odpowiedziana": [
+      "bool"
+    ],
+    "$[].przeczytana": [
+      "bool"
+    ],
+    "$[].przekazana": [
+      "bool"
+    ],
+    "$[].skrzynka": [
+      "string"
+    ],
+    "$[].temat": [
+      "string"
+    ],
+    "$[].uzytkownikRola": [
+      "number"
+    ],
+    "$[].wazna": [
+      "bool"
+    ],
+    "$[].wycofana": [
+      "bool"
+    ]
+  }
+}
