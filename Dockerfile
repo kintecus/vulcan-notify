@@ -17,15 +17,17 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+# Chromium depends only on the locked playwright version, so it sits above the
+# source copy: a code change must not re-download ~2 browsers (~2 min on the PVE box).
+# --no-sync because the project itself is not installed until src/ is copied.
+RUN uv run --no-sync playwright install chromium
+
 # Copy source
 COPY src/ src/
 COPY prompts.toml ./
 
 # Install the project
 RUN uv sync --frozen --no-dev
-
-# Install Playwright Chromium
-RUN uv run playwright install chromium
 
 # Data directory for persistent state (session.json, vulcan_notify.db)
 RUN mkdir -p /app/data
