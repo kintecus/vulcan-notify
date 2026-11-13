@@ -361,7 +361,7 @@ async def diff_excuses(student: Student, fetched: list[Excuse], db: Database) ->
     stored = await db.get_excuse_statuses(student.key)
     changes: list[Change] = []
     for excuse in fetched:
-        old = stored.get(excuse.id)
+        old = stored.get((excuse.day_id, excuse.id))
         if old is None or old == excuse.status:
             continue
         lesson = f", lesson {excuse.lesson_number}" if excuse.lesson_number else ""

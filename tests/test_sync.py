@@ -268,6 +268,23 @@ async def test_excuse_status_change_detected(db: Database) -> None:
     assert "status 1 -> 2" in result.new_excuses[0].body
 
 
+async def test_whole_day_excuses_do_not_collide(db: Database) -> None:
+    """Whole-day excuses all carry lesson id 0; only the day id tells them apart."""
+    from vulcan_notify.models import Excuse
+
+    client = _make_mock_client()
+    client.get_excuses = AsyncMock(
+        return_value=[
+            Excuse(0, 153196, "2026-09-28", None, 1),
+            Excuse(0, 160001, "2026-11-12", None, 0),
+        ]
+    )
+    await sync_student(client, db, STUDENT_A)
+    for _ in range(3):
+        result = await sync_student(client, db, STUDENT_A)
+        assert result.new_excuses == []
+
+
 async def test_new_remark_detected(db: Database) -> None:
     from vulcan_notify.models import FeedItem
 
