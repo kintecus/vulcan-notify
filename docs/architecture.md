@@ -110,7 +110,7 @@ SQLite lives at `DB_PATH` (default `vulcan_notify.db`). Tables:
 | `sync_runs` | `id` AUTOINCREMENT | History of runs: `completed`, `degraded` (a section failed), `failed`, or `interrupted` (abandoned mid-run, reconciled on the next start). Pruned past `SYNC_HISTORY_KEEP_DAYS`. |
 | `sync_sections` | `id` AUTOINCREMENT | Per-section, per-student outcome for each run, with item counts and error detail. Without it a partial outage — grades broken, everything else fine — is invisible. |
 | `days_off` | `(student_key, date_from, name)` | School holidays and closures from `DniWolne`, current school year. Also suppresses empty-section drift alerts over breaks. |
-| `excuses` | `(student_key, id)` | Absence excuses per lesson from `Usprawiedliwienia`, with `status`. |
+| `excuses` | `(student_key, day_id, id)` | Absence excuses from `Usprawiedliwienia`, with `status`. Neither upstream id is unique alone: lesson-level excuses have `day_id` 0 and whole-day excuses have `id` 0. |
 | `feed_items` | `(student_key, kind, item_key)` | Remarks (`Uwagi`) and announcements (`OgloszeniaTablica`). Neither has returned an item yet, so the raw JSON is stored next to best-effort text. |
 | `api_shapes` | `(endpoint, path)` | Learned response structure per endpoint: key path, types seen, and whether the key is currently missing. No values. |
 | `api_drift` | `id` AUTOINCREMENT | Every drift event detected, with the run it came from. |
@@ -128,7 +128,7 @@ The full entity diagram (students + primary entities) is in the [README](../READ
 - **Messages** — keyed by `api_global_key`. Content is pulled lazily; the MQTT payload for a newly-appeared message includes the body once fetched.
 - **Schedule** — keyed by `(date, time_from, subject)`. Three independent change types are emitted: `substitution` (teacher/room swap), `cancellation` (annotation flag set), `addition` (is_extra lesson inserted).
 - **Days off** — keyed by `(date_from, name)`. New entry → `new`.
-- **Excuses** — keyed by upstream id. Only a status change is reported (`updated`); a new excuse is the parent's own submission.
+- **Excuses** — keyed by `(day_id, id)`. Only a status change is reported (`updated`); a new excuse is the parent's own submission.
 - **Remarks / announcements** — keyed by upstream `id`, or a hash of the item when there is none. New item → `new`.
 
 First sync for a student writes a `sync_state` marker and suppresses all changes, so new installs don't flood channels with backlog noise. Sections added later (days off, excuses, remarks, announcements) baseline the same way on their own first success.

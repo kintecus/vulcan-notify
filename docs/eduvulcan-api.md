@@ -166,7 +166,9 @@ Excuse requests for the given date range. Synced into `excuses`; a status change
 }
 ```
 
-The lesson fields (`idPoraLekcji`, `numerLekcji`, `poczatekLekcji`, `koniecLekcji`) are all `null` for a whole-day excuse. Only `status: 1` has been observed; its meaning is unconfirmed.
+The lesson fields (`idPoraLekcji`, `numerLekcji`, `poczatekLekcji`, `koniecLekcji`) are all `null` for a whole-day excuse, and `idUsprawiedliwienieDzienPoraLekcji` is `0`. A per-lesson excuse is the mirror image: it has a lesson id and `idUsprawiedliwienieDzien` is 0 or `null` (the parser coerces both to 0, so which one is unconfirmed). So neither id identifies an excuse alone, and two whole-day excuses for one student share lesson id 0. Key on the pair (observed 2026-11-12, when keying on the lesson id alone made a status change re-publish every sync).
+
+`status` values observed: `1` on excuses for a past absence (Sep 28), and `0` on a whole-day excuse for the current day (observed 2026-11-12). That suggests 0 = pending and 1 = accepted, but neither meaning is confirmed.
 
 ## Dashboard summaries (Tablica endpoints)
 
@@ -606,6 +608,6 @@ Recommended approach:
 - `rodzaj` values in SprawdzianyTablica (1=test? 2=quiz?)
 - Session cookie expiry duration (observed to survive at least a few minutes; longer-term testing needed)
 - ~~Pagination beyond the first page~~ Answered: yes, with an inclusive cursor (see `Odebrane`)
-- `status` values in `Usprawiedliwienia` (only 1 observed)
+- `status` values in `Usprawiedliwienia` (0 and 1 observed; 0 = pending, 1 = accepted is likely but unconfirmed; a rejection value is unseen)
 - Item schemas for `Uwagi` and `OgloszeniaTablica` (never non-empty so far)
 - Date parameter format the SPA uses for `SprawdzianyZadaniaDomowe`, `Jadlospis`, and `ZgloszoneNieobecnosci` (only names were recorded)
