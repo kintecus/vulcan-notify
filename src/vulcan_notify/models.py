@@ -143,11 +143,11 @@ class DayOff:
 class Excuse:
     """One lesson covered by an absence excuse (Usprawiedliwienia)."""
 
-    id: int  # idUsprawiedliwienieDzienPoraLekcji
-    day_id: int  # idUsprawiedliwienieDzien
+    id: int  # idUsprawiedliwienieDzienPoraLekcji; 0 for whole-day excuses
+    day_id: int  # idUsprawiedliwienieDzien; 0 for per-lesson excuses
     date: str  # dzien
     lesson_number: int | None  # numerLekcji; null for whole-day excuses
-    status: int  # status; only 1 observed so far, meaning unconfirmed
+    status: int  # 0 and 1 observed; likely pending/accepted, unconfirmed
 
 
 @dataclass
