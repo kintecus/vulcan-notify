@@ -215,13 +215,14 @@ CREATE TABLE IF NOT EXISTS days_off (
 CREATE TABLE IF NOT EXISTS excuses (
     student_key TEXT NOT NULL,
     id INTEGER NOT NULL,
-    day_id INTEGER,
+    day_id INTEGER NOT NULL,
     date TEXT,
     lesson_number INTEGER,
     status INTEGER,
     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (student_key, id)
+    -- Lesson-level excuses have day_id 0, whole-day ones have id 0: neither is unique alone.
+    PRIMARY KEY (student_key, day_id, id)
 );
 
 -- Remarks and announcements. Neither endpoint has returned an item yet, so the raw
@@ -401,6 +402,16 @@ class Database:
                 if col not in columns:
                     logger.info("Migrating: adding %s column to grades", col)
                     await self.db.execute(f"ALTER TABLE grades ADD COLUMN {col} {col_type}")
+
+        # Rekey excuses on (day_id, id). Whole-day excuses all share id 0, so the old
+        # (student_key, id) key collapsed them into one row whose status flip-flopped and
+        # re-published a status change on every sync. The table is a cache: the diff skips
+        # excuses it has not seen, so the next sync rebuilds it without notifying.
+        col_cursor = await self.db.execute("PRAGMA table_info(excuses)")
+        pk_cols = {row[1] for row in await col_cursor.fetchall() if row[5]}
+        if pk_cols and "day_id" not in pk_cols:
+            logger.info("Migrating: rebuilding excuses table keyed on (day_id, id)")
+            await self.db.execute("DROP TABLE excuses")
 
         await self.db.commit()
 
@@ -1268,7 +1279,7 @@ class Database:
         await self.db.execute(
             "INSERT INTO excuses (student_key, id, day_id, date, lesson_number, status) "
             "VALUES (?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT (student_key, id) DO UPDATE SET status = excluded.status, "
+            "ON CONFLICT (student_key, day_id, id) DO UPDATE SET status = excluded.status, "
             "updated_at = CASE WHEN excuses.status IS excluded.status "
             "THEN excuses.updated_at ELSE CURRENT_TIMESTAMP END",
             (
@@ -1281,11 +1292,12 @@ class Database:
             ),
         )
 
-    async def get_excuse_statuses(self, student_key: str) -> dict[int, int]:
+    async def get_excuse_statuses(self, student_key: str) -> dict[tuple[int, int], int]:
+        """Statuses keyed by (day_id, id)."""
         cursor = await self.db.execute(
-            "SELECT id, status FROM excuses WHERE student_key = ?", (student_key,)
+            "SELECT day_id, id, status FROM excuses WHERE student_key = ?", (student_key,)
         )
-        return {int(r[0]): int(r[1] or 0) for r in await cursor.fetchall()}
+        return {(int(r[0]), int(r[1])): int(r[2] or 0) for r in await cursor.fetchall()}
 
     async def upsert_feed_item(self, student_key: str, item: FeedItem) -> None:
         await self.db.execute(
