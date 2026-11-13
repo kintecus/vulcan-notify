@@ -162,13 +162,14 @@ journalctl -u vulcan-deploy --no-pager -n 20
 
 ### Skipping the 5-minute wait
 
-Push to GitHub, then:
-
 ```bash
-./deploy.sh
+git ship        # global alias in dotfiles: git push && ./deploy.sh
+./deploy.sh     # if you already pushed
 ```
 
-This only shortcuts the timer's polling interval; it is not the sole deploy path. It SSHes to the **PVE host** and `pct exec`s into LXC 103 to run pull + rebuild, because the LXC itself is not reachable over the tailnet. Override with `PVE_HOST=<host> ./deploy.sh`.
+`deploy.sh` only shortcuts the timer's polling interval. It SSHes to the **PVE host** and `pct exec`s into LXC 103 to `systemctl start vulcan-deploy.service`, the same unit the timer starts, because the LXC itself is not reachable over the tailnet. So a manual deploy gets the same build-before-recreate, rollback, and ntfy report, and systemd will not run it concurrently with a timer-triggered one. It prints the run's `[deploy]` lines and exits non-zero if the deploy failed. Override with `PVE_HOST=<host> ./deploy.sh`.
+
+The Dockerfile installs Chromium before copying `src/`, so a code-only change rebuilds in seconds. Only a `uv.lock` change re-downloads the browsers (~2 min on the PVE box).
 
 ## 8. Monitoring
 
