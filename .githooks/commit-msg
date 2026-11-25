@@ -1,0 +1,3 @@
+#!/bin/bash
+# Real family data guard for commit messages. See pii-check.
+exec "$(git rev-parse --show-toplevel)/.githooks/pii-check" msg "$1"

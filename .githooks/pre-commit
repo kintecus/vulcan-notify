@@ -56,3 +56,6 @@ if [ -n "$MERMAID_STAGED_MD" ]; then
     fi
 fi
 # <<< tribe-coding/mermaid <<<
+
+# Real family data guard (public repo). Patterns live outside the repo; see pii-check.
+"$(git rev-parse --show-toplevel)/.githooks/pii-check" staged || exit 1

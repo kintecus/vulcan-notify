@@ -1,0 +1,4 @@
+#!/bin/bash
+# Last line of defense: scans every commit being pushed (messages, paths, diffs),
+# including ones made with --no-verify. See pii-check.
+exec "$(git rev-parse --show-toplevel)/.githooks/pii-check" push

@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CLI tool that syncs data from the eduVulcan school e-journal (grades, attendance, exams, homework, messages) to a local SQLite database and detects changes between syncs. Uses cookie-based auth via Playwright browser login.
 
+## Privacy: this repo is public
+
+Never write real family data into code, tests, fixtures, docs, file names, or commit messages: no kids' names, nicknames, family surname, school, class, or district slug. Use the fixture names instead: Helena Nowak (nickname Hela), Marcel Nowak, district `testdistrict`. This applies to "user-facing impact" lines in commit messages too: say "a student", not a name.
+
+Hooks enforce it (`git config core.hooksPath .githooks`): `pre-commit`, `commit-msg`, and `pre-push` run `.githooks/pii-check` against a denylist kept outside the repo at `~/.config/vulcan-notify/pii-denylist`. The hook fails closed if that file is missing. Never commit the denylist, and never bypass a block with `--no-verify`. Rename the data instead. History was rewritten on 2026-11-25 to remove earlier leaks.
+
 ## Sibling repos (cross-repo work is common)
 
 Changes here almost always need a corresponding change in the homelab repo — new API endpoints need HA REST sensors, new MQTT topics need HA automations, new deploy behavior needs CLAUDE.md updates. Always check the homelab repo before assuming infra/docs don't exist, and update both in a single session when a change spans them.
